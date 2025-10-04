@@ -1,6 +1,6 @@
 # Grid UI
 
-![Grid Banner](../grid-docs/readme-assets/banner.png)
+![Grid Banner](readme-assets/banner.png)
 
 > **Beautiful, modern interface for Grid Platform** - Infrastructure Orchestration Platform UI
 
