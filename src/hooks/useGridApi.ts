@@ -2,7 +2,7 @@
  * Grid Console → backend API hooks.
  *
  * Deployments submit GridDeployRequest (see src/lib/deployContract.ts).
- * Set VITE_USE_MOCK_DATA=false and VITE_GRID_API_URL to hit grid-core / CLI bridge.
+ * Point VITE_GRID_API_URL at grid-core / CLI bridge.
  */
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -18,7 +18,6 @@ import type {
   Approval,
   Cluster,
   Alert,
-  AlertRule,
   APMService,
   APMOperation,
   APMTrace,
@@ -33,12 +32,6 @@ import type {
 // ─── Configuration ──────────────────────────────────────────────────────────
 
 const API_BASE_URL = import.meta.env.VITE_GRID_API_URL || "/api/v1";
-
-/**
- * When true, uses mock data generators instead of real API calls.
- * Set VITE_USE_MOCK_DATA=false to use real backend.
- */
-const USE_MOCK_DATA = import.meta.env.VITE_USE_MOCK_DATA !== "false";
 
 // ─── API Client ─────────────────────────────────────────────────────────────
 
@@ -68,14 +61,8 @@ async function gridFetch<T>(endpoint: string, options?: RequestInit): Promise<T>
 export function useTopologyProviders() {
   return useQuery({
     queryKey: ["topology", "providers"],
-    queryFn: async (): Promise<TopologyProvider[]> => {
-      if (USE_MOCK_DATA) {
-        const { buildStressTopologyData } = await import("@/data/stressTestData");
-        return buildStressTopologyData();
-      }
-      return gridFetch<TopologyProvider[]>("/topology/providers");
-    },
-    staleTime: 30_000, // 30 seconds
+    queryFn: () => gridFetch<TopologyProvider[]>("/topology/providers"),
+    staleTime: 30_000,
   });
 }
 
@@ -87,7 +74,7 @@ export function useProviderVpcs(providerId: string) {
   return useQuery({
     queryKey: ["topology", "providers", providerId, "vpcs"],
     queryFn: () => gridFetch<TopologyVpc[]>(`/topology/providers/${providerId}/vpcs`),
-    enabled: !USE_MOCK_DATA && !!providerId,
+    enabled: !!providerId,
   });
 }
 
@@ -99,7 +86,7 @@ export function useVpcResources(vpcId: string) {
   return useQuery({
     queryKey: ["topology", "vpcs", vpcId, "resources"],
     queryFn: () => gridFetch<TopologyResource[]>(`/topology/vpcs/${vpcId}/resources`),
-    enabled: !USE_MOCK_DATA && !!vpcId,
+    enabled: !!vpcId,
   });
 }
 
@@ -112,13 +99,7 @@ export function useVpcResources(vpcId: string) {
 export function useInfrastructures() {
   return useQuery({
     queryKey: ["infrastructures"],
-    queryFn: async (): Promise<InfrastructureListItem[]> => {
-      if (USE_MOCK_DATA) {
-        const { generateStressResources } = await import("@/data/stressTestData");
-        return generateStressResources() as unknown as InfrastructureListItem[];
-      }
-      return gridFetch<InfrastructureListItem[]>("/infrastructures");
-    },
+    queryFn: () => gridFetch<InfrastructureListItem[]>("/infrastructures"),
     staleTime: 10_000,
   });
 }
@@ -131,7 +112,7 @@ export function useInfrastructure(id: string) {
   return useQuery({
     queryKey: ["infrastructures", id],
     queryFn: () => gridFetch<Infrastructure>(`/infrastructures/${id}`),
-    enabled: !USE_MOCK_DATA && !!id,
+    enabled: !!id,
   });
 }
 
@@ -279,7 +260,6 @@ export function useGitOpsStatus() {
           desiredAhead: boolean;
         }>;
       }>("/gitops/status"),
-    enabled: !USE_MOCK_DATA,
     refetchInterval: 15_000,
   });
 }
@@ -323,7 +303,7 @@ export function useSyncGitOps() {
  */
 export function useCloneInfrastructure() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: ({ id, targetEnvironment }: { id: string; targetEnvironment: string }) =>
       gridFetch<Infrastructure>(`/infrastructures/${id}/clone`, {
@@ -346,7 +326,6 @@ export function useDeployments() {
   return useQuery({
     queryKey: ["deployments"],
     queryFn: () => gridFetch<Deployment[]>("/deployments"),
-    enabled: !USE_MOCK_DATA,
     refetchInterval: (query) => {
       const rows = query.state.data;
       if (!rows?.length) return false;
@@ -366,15 +345,11 @@ export function useCreateDeployment() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (body: GridDeployRequest) => {
-      if (USE_MOCK_DATA) {
-        throw new Error("useCreateDeployment requires VITE_USE_MOCK_DATA=false");
-      }
-      return gridFetch<Deployment>("/deployments", {
+    mutationFn: (body: GridDeployRequest) =>
+      gridFetch<Deployment>("/deployments", {
         method: "POST",
         body: JSON.stringify(body),
-      });
-    },
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["deployments"] });
       queryClient.invalidateQueries({ queryKey: ["infrastructures"] });
@@ -397,7 +372,7 @@ export function useDeploymentLogs(id: string) {
         status?: string;
         progress?: number;
       }>(`/deployments/${id}/logs`),
-    enabled: !USE_MOCK_DATA && !!id,
+    enabled: !!id,
     refetchInterval: (query) => {
       const status = query.state.data?.status;
       if (status === "success" || status === "failed" || status === "cancelled") return false;
@@ -412,7 +387,7 @@ export function useDeploymentLogs(id: string) {
  */
 export function useCancelDeployment() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: (id: string) =>
       gridFetch<void>(`/deployments/${id}/cancel`, { method: "POST" }),
@@ -432,7 +407,6 @@ export function useReleases() {
   return useQuery({
     queryKey: ["releases"],
     queryFn: () => gridFetch<Release[]>("/releases"),
-    enabled: !USE_MOCK_DATA,
   });
 }
 
@@ -444,7 +418,6 @@ export function usePendingApprovals() {
   return useQuery({
     queryKey: ["approvals", "pending"],
     queryFn: () => gridFetch<Approval[]>("/approvals"),
-    enabled: !USE_MOCK_DATA,
   });
 }
 
@@ -454,7 +427,7 @@ export function usePendingApprovals() {
  */
 export function useApproveRelease() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: ({ id, comment }: { id: string; comment?: string }) =>
       gridFetch<Approval>(`/approvals/${id}/approve`, {
@@ -474,7 +447,7 @@ export function useApproveRelease() {
  */
 export function useRejectRelease() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: ({ id, comment }: { id: string; comment: string }) =>
       gridFetch<Approval>(`/approvals/${id}/reject`, {
@@ -494,7 +467,7 @@ export function useRejectRelease() {
  */
 export function useRollbackRelease() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: (id: string) =>
       gridFetch<Release>(`/releases/${id}/rollback`, { method: "POST" }),
@@ -514,7 +487,6 @@ export function useClusters() {
   return useQuery({
     queryKey: ["clusters"],
     queryFn: () => gridFetch<Cluster[]>("/clusters"),
-    enabled: !USE_MOCK_DATA,
   });
 }
 
@@ -524,7 +496,7 @@ export function useClusters() {
  */
 export function useScaleCluster() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: ({ id, nodes }: { id: string; nodes: number }) =>
       gridFetch<Cluster>(`/clusters/${id}/scale`, {
@@ -546,25 +518,8 @@ export function useScaleCluster() {
 export function useAlerts() {
   return useQuery({
     queryKey: ["alerts"],
-    queryFn: async (): Promise<Alert[]> => {
-      if (USE_MOCK_DATA) {
-        const { generateStressActiveAlerts } = await import("@/data/stressTestData");
-        const alerts = generateStressActiveAlerts();
-        return alerts.map(a => ({
-          id: a.id,
-          ruleName: a.rule_name,
-          resource: a.resource,
-          severity: a.severity,
-          status: a.status,
-          message: a.message,
-          startedAt: a.started_at,
-          acknowledgedBy: a.acknowledged_by,
-          resolvedAt: a.resolved_at,
-        }));
-      }
-      return gridFetch<Alert[]>("/monitoring/alerts");
-    },
-    refetchInterval: 30_000, // Poll every 30s
+    queryFn: () => gridFetch<Alert[]>("/monitoring/alerts"),
+    refetchInterval: 30_000,
   });
 }
 
@@ -576,7 +531,7 @@ export function useMetrics(infraId: string, range: "1h" | "6h" | "24h" | "7d" = 
   return useQuery({
     queryKey: ["monitoring", "metrics", infraId, range],
     queryFn: () => gridFetch<TimeSeriesData[]>(`/monitoring/metrics/${infraId}?range=${range}`),
-    enabled: !USE_MOCK_DATA && !!infraId,
+    enabled: !!infraId,
   });
 }
 
@@ -589,13 +544,7 @@ export function useMetrics(infraId: string, range: "1h" | "6h" | "24h" | "7d" = 
 export function useAPMServices() {
   return useQuery({
     queryKey: ["apm", "services"],
-    queryFn: async (): Promise<APMService[]> => {
-      if (USE_MOCK_DATA) {
-        const { mockServices } = await import("@/data/apmMockData");
-        return mockServices as unknown as APMService[];
-      }
-      return gridFetch<APMService[]>("/apm/services");
-    },
+    queryFn: () => gridFetch<APMService[]>("/apm/services"),
   });
 }
 
@@ -607,7 +556,7 @@ export function useServiceOperations(serviceId: string) {
   return useQuery({
     queryKey: ["apm", "services", serviceId, "operations"],
     queryFn: () => gridFetch<APMOperation[]>(`/apm/services/${serviceId}/operations`),
-    enabled: !USE_MOCK_DATA && !!serviceId,
+    enabled: !!serviceId,
   });
 }
 
@@ -618,8 +567,9 @@ export function useServiceOperations(serviceId: string) {
 export function useOperationTraces(serviceId: string, operationId: string) {
   return useQuery({
     queryKey: ["apm", "services", serviceId, "operations", operationId, "traces"],
-    queryFn: () => gridFetch<APMTrace[]>(`/apm/services/${serviceId}/operations/${operationId}/traces`),
-    enabled: !USE_MOCK_DATA && !!serviceId && !!operationId,
+    queryFn: () =>
+      gridFetch<APMTrace[]>(`/apm/services/${serviceId}/operations/${operationId}/traces`),
+    enabled: !!serviceId && !!operationId,
   });
 }
 
@@ -640,7 +590,6 @@ export function useLogs(query: LogQuery) {
       if (query.end) params.set("end", query.end);
       return gridFetch<LogEntry[]>(`/logs?${params.toString()}`);
     },
-    enabled: !USE_MOCK_DATA,
   });
 }
 
@@ -654,7 +603,6 @@ export function useEnvironments() {
   return useQuery({
     queryKey: ["environments"],
     queryFn: () => gridFetch<Environment[]>("/environments"),
-    enabled: !USE_MOCK_DATA,
   });
 }
 
@@ -668,7 +616,6 @@ export function useRecommendations() {
   return useQuery({
     queryKey: ["ml", "recommendations"],
     queryFn: () => gridFetch<Recommendation[]>("/ml/recommendations"),
-    enabled: !USE_MOCK_DATA,
   });
 }
 
@@ -682,6 +629,5 @@ export function useCurrentUser() {
   return useQuery({
     queryKey: ["auth", "me"],
     queryFn: () => gridFetch<User>("/auth/me"),
-    enabled: !USE_MOCK_DATA,
   });
 }

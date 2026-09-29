@@ -8,7 +8,8 @@ import {
   MarkerType,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import type { CloudProvider, ResourceLayer } from "@/data/topologyTypes";
+import type { TopologyProvider } from "@/types/api";
+import type { ResourceLayer } from "@/data/topologyTypes";
 import VpcBubbleNode from "./topology/VpcBubbleNode";
 import ProviderLabelNode from "./topology/ProviderLabelNode";
 import { buildBubbleLayout } from "./topology/useBubbleLayout";
@@ -19,7 +20,7 @@ const nodeTypes = {
 };
 
 interface TopologyDiagramProps {
-  providers: CloudProvider[];
+  providers: TopologyProvider[];
   visibleLayers: Set<ResourceLayer>;
   visibleProviders: Set<string>;
 }

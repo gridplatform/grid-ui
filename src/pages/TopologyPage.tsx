@@ -1,10 +1,10 @@
-import { useMemo, useState, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
 import AppShell from "@/components/AppShell";
 import TopologyDiagram from "@/components/TopologyDiagram";
-import { buildStressTopologyData } from "@/data/stressTestData";
+import { useTopologyProviders } from "@/hooks/useGridApi";
 import { layerLabels, layerOrder, type ResourceLayer } from "@/data/topologyTypes";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Clock, Shield, Network, Gauge, Box, Database } from "lucide-react";
+import { Clock, Shield, Network, Gauge, Box, Database, Loader2 } from "lucide-react";
 
 const layerIcons: Record<ResourceLayer, React.ElementType> = {
   waf: Shield,
@@ -15,14 +15,16 @@ const layerIcons: Record<ResourceLayer, React.ElementType> = {
 };
 
 const TopologyPage = () => {
-  const providers = useMemo(() => buildStressTopologyData(), []);
+  const { data: providers = [], isLoading, error } = useTopologyProviders();
 
   const [visibleLayers, setVisibleLayers] = useState<Set<ResourceLayer>>(
     () => new Set(layerOrder)
   );
-  const [visibleProviders, setVisibleProviders] = useState<Set<string>>(
-    () => new Set(providers.map((p) => p.id))
-  );
+  const [visibleProviders, setVisibleProviders] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    setVisibleProviders(new Set(providers.map((p) => p.id)));
+  }, [providers]);
 
   const toggleLayer = useCallback((layer: ResourceLayer) => {
     setVisibleLayers((prev) => {
@@ -47,29 +49,49 @@ const TopologyPage = () => {
   return (
     <AppShell activeTab="topology">
       <div className="flex h-[calc(100vh-56px)]">
-        {/* ─── Filter Sidebar ─────────────────────────────────────────── */}
         <div className="w-56 border-r border-border bg-card/50 p-4 space-y-6 flex-shrink-0 overflow-y-auto">
-          {/* Stats */}
           <div className="space-y-1">
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <Clock className="w-3 h-3" />
               <span>Live topology</span>
             </div>
             <div className="text-[11px] text-muted-foreground space-y-0.5">
-              <div><span className="text-foreground font-semibold">{totalResources}</span> resources</div>
-              <div><span className="text-foreground font-semibold">{totalVpcs}</span> VPCs</div>
-              {totalCritical > 0 && (
-                <div className="text-destructive"><span className="font-semibold">{totalCritical}</span> critical</div>
+              {isLoading ? (
+                <div className="flex items-center gap-1.5">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Loading…
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <span className="text-foreground font-semibold">{totalResources}</span> resources
+                  </div>
+                  <div>
+                    <span className="text-foreground font-semibold">{totalVpcs}</span> VPCs
+                  </div>
+                  {totalCritical > 0 && (
+                    <div className="text-destructive">
+                      <span className="font-semibold">{totalCritical}</span> critical
+                    </div>
+                  )}
+                </>
               )}
             </div>
+            {error && (
+              <p className="text-[11px] text-destructive mt-1">
+                {error instanceof Error ? error.message : "Failed to load topology"}
+              </p>
+            )}
           </div>
 
-          {/* Providers */}
           <div>
             <h3 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
               Providers
             </h3>
             <div className="space-y-1.5">
+              {!isLoading && providers.length === 0 && (
+                <p className="text-[11px] text-muted-foreground">No providers yet.</p>
+              )}
               {providers.map((p) => (
                 <label key={p.id} className="flex items-center gap-2 cursor-pointer group">
                   <Checkbox
@@ -86,7 +108,6 @@ const TopologyPage = () => {
             </div>
           </div>
 
-          {/* Layers */}
           <div>
             <h3 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
               Entities
@@ -111,7 +132,6 @@ const TopologyPage = () => {
             </div>
           </div>
 
-          {/* Legend */}
           <div>
             <h3 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
               Health Status
@@ -135,13 +155,18 @@ const TopologyPage = () => {
           </div>
         </div>
 
-        {/* ─── Diagram ────────────────────────────────────────────────── */}
         <div className="flex-1 min-w-0">
-          <TopologyDiagram
-            providers={providers}
-            visibleLayers={visibleLayers}
-            visibleProviders={visibleProviders}
-          />
+          {!isLoading && providers.length === 0 ? (
+            <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+              No topology data. Sync infrastructures from config root, then refresh.
+            </div>
+          ) : (
+            <TopologyDiagram
+              providers={providers}
+              visibleLayers={visibleLayers}
+              visibleProviders={visibleProviders}
+            />
+          )}
         </div>
       </div>
     </AppShell>

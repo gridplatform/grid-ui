@@ -9,8 +9,6 @@ import {
 } from "@/hooks/useGridApi";
 import { useNavigate } from "react-router-dom";
 
-const USE_MOCK = import.meta.env.VITE_USE_MOCK_DATA !== "false";
-
 const GitOpsPage = () => {
   const navigate = useNavigate();
   const { data: status, isLoading, refetch } = useGitOpsStatus();
@@ -74,16 +72,6 @@ const GitOpsPage = () => {
       setNote(e instanceof Error ? e.message : "Drift check failed");
     }
   };
-
-  if (USE_MOCK) {
-    return (
-      <AppShell activeTab="gitops">
-        <div className="p-6 text-sm text-muted-foreground">
-          Set <code className="font-mono">VITE_USE_MOCK_DATA=false</code> and point at grid-core to use GitOps.
-        </div>
-      </AppShell>
-    );
-  }
 
   return (
     <AppShell activeTab="gitops">

@@ -6,7 +6,7 @@ import {
   AlertTriangle, Server, Cloud, Network, Database, Monitor, Globe,
   Box, Timer, Layers, Shield, Container, HardDrive, Cpu,
 } from "lucide-react";
-import { mockResources, type Resource, type ResourceType } from "./InfrastructurePage";
+import { type Resource, type ResourceType } from "./InfrastructurePage";
 import {
   useApplyInfrastructure,
   useDestroyInfrastructure,
@@ -16,8 +16,6 @@ import {
   useUpdateInfrastructure,
 } from "@/hooks/useGridApi";
 import { DeploymentLiveLogs } from "@/components/DeploymentLiveLogs";
-
-const USE_MOCK = import.meta.env.VITE_USE_MOCK_DATA !== "false";
 
 const typeIcons: Record<ResourceType, React.ElementType> = {
   "single-vm": Monitor, "vm-cluster": Server, kubernetes: Cloud, network: Network, "managed-service": Database,
@@ -35,67 +33,17 @@ const statusColors: Record<string, string> = {
   destroyed: "bg-destructive/10 text-destructive",
 };
 
-// ─── AI mock ─────────────────────────────────────────────────────────────────
-
 interface AiAnalysis {
   issues: string[];
   suggestions: string[];
   suggestedChanges: string;
 }
 
-const mockAiAnalyze = (resource: Resource): AiAnalysis => {
-  if (resource.status === "error") {
-    return {
-      issues: [
-        `Resource ${resource.name} is in ERROR state.`,
-        "Latest deployment failed with timeout waiting for state change.",
-        "Disk I/O is critically high on additional volume /dev/sdf.",
-      ],
-      suggestions: [
-        "Increase IOPS on /dev/sdf volume from current to 64000.",
-        "Consider scaling to r5.8xlarge for additional headroom.",
-        "Review security group rules — port 5432 is open to 0.0.0.0/0.",
-      ],
-      suggestedChanges: JSON.stringify({
-        ...resource.config,
-        instance_type: "r5.8xlarge",
-        additional_volumes: [{ device_name: "/dev/sdf", volume_size: 1000, volume_type: "io2", iops: 64000 }],
-      }, null, 2),
-    };
-  }
-  if (resource.status === "degraded") {
-    return {
-      issues: [
-        `Cluster ${resource.name} has degraded node pool.`,
-        "2 of 3 nodes are NotReady due to resource pressure.",
-      ],
-      suggestions: [
-        "Scale node pool 'default' from 3 to 5 nodes.",
-        "Increase machine type to m5.2xlarge.",
-        "Check pod resource limits — several pods are OOMKilled.",
-      ],
-      suggestedChanges: JSON.stringify({
-        ...resource.config,
-        node_pools: [{ name: "default", machine_type: "m5.2xlarge", count: 5 }],
-      }, null, 2),
-    };
-  }
-  return {
-    issues: ["No critical issues detected."],
-    suggestions: [
-      "Consider enabling enhanced monitoring for better observability.",
-      "Review cost optimization — instance may be over-provisioned.",
-    ],
-    suggestedChanges: JSON.stringify(resource.config, null, 2),
-  };
-};
-
 // ─── Component ───────────────────────────────────────────────────────────────
 
 const InfrastructureDetailPage = () => {
   const { resourceId } = useParams();
   const navigate = useNavigate();
-  const mockResource = mockResources.find((r) => r.id === resourceId);
 
   const { data: liveInfra, isLoading: liveLoading } = useInfrastructure(resourceId || "");
   const updateInfra = useUpdateInfrastructure();
@@ -111,30 +59,27 @@ const InfrastructureDetailPage = () => {
     actions?: { applyGitDesired?: string; updateGitToMatchLive?: string };
   } | null>(null);
 
-  const liveAsResource: Resource | null =
-    !USE_MOCK && liveInfra
-      ? {
-          id: liveInfra.id,
-          name: liveInfra.name,
-          type: "single-vm",
-          status:
-            liveInfra.status === "running" ||
-            liveInfra.status === "error" ||
-            liveInfra.status === "degraded"
-              ? liveInfra.status
-              : "stopped",
-          region: String((liveInfra.configJson as { region?: string }).region || "—"),
-          environment: liveInfra.environment,
-          provider: liveInfra.provider,
-          ip: "—",
-          cpu: "—",
-          memory: "—",
-          connections: [],
-          config: liveInfra.configJson,
-        }
-      : null;
-
-  const resource = USE_MOCK ? mockResource : liveAsResource || mockResource;
+  const resource: Resource | null = liveInfra
+    ? {
+        id: liveInfra.id,
+        name: liveInfra.name,
+        type: "single-vm",
+        status:
+          liveInfra.status === "running" ||
+          liveInfra.status === "error" ||
+          liveInfra.status === "degraded"
+            ? liveInfra.status
+            : "stopped",
+        region: String((liveInfra.configJson as { region?: string }).region || "—"),
+        environment: liveInfra.environment,
+        provider: liveInfra.provider,
+        ip: "—",
+        cpu: "—",
+        memory: "—",
+        connections: [],
+        config: liveInfra.configJson,
+      }
+    : null;
 
   const [activeTab, setActiveTab] = useState<"details" | "ai">("details");
   const [editMode, setEditMode] = useState(false);
@@ -142,7 +87,6 @@ const InfrastructureDetailPage = () => {
   const [actionNote, setActionNote] = useState<string | null>(null);
   const [watchingId, setWatchingId] = useState<string | null>(null);
 
-  // AI state
   const [aiLoading, setAiLoading] = useState(false);
   const [aiResult, setAiResult] = useState<AiAnalysis | null>(null);
   const [aiEdited, setAiEdited] = useState("");
@@ -154,7 +98,7 @@ const InfrastructureDetailPage = () => {
     }
   }, [resource?.id, resource?.config, editMode]);
 
-  if (!USE_MOCK && liveLoading && !mockResource) {
+  if (liveLoading) {
     return (
       <AppShell activeTab="infrastructure">
         <div className="p-6 text-center text-muted-foreground">Loading…</div>
@@ -170,8 +114,8 @@ const InfrastructureDetailPage = () => {
     );
   }
 
-  const TypeIcon = typeIcons[resource.type];
-  const isLive = !USE_MOCK && !!liveInfra;
+  const TypeIcon = typeIcons[resource.type] || Monitor;
+  const isLive = !!liveInfra;
 
   const startEdit = () => {
     setEditedJson(JSON.stringify(resource.config, null, 2));
@@ -242,13 +186,18 @@ const InfrastructureDetailPage = () => {
     setAiLoading(true);
     setAiResult(null);
     setAiApprovalStatus(null);
+    // AI analysis endpoint not wired yet — show empty analysis shell.
     setTimeout(() => {
-      const result = mockAiAnalyze(resource);
+      const result: AiAnalysis = {
+        issues: [],
+        suggestions: [],
+        suggestedChanges: JSON.stringify(resource.config, null, 2),
+      };
       setAiResult(result);
       setAiEdited(result.suggestedChanges);
       setAiLoading(false);
       setAiApprovalStatus("pending");
-    }, 2000);
+    }, 400);
   };
 
   const hasIssue = resource.status === "error" || resource.status === "degraded";
@@ -408,18 +357,15 @@ const InfrastructureDetailPage = () => {
               <div className="rounded-lg border border-border bg-card p-4">
                 <h3 className="text-sm font-medium text-foreground mb-2">Connected Resources</h3>
                 <div className="flex flex-wrap gap-2">
-                  {resource.connections.map((cId) => {
-                    const connected = mockResources.find((r) => r.id === cId);
-                    return (
+                  {resource.connections.map((cId) => (
                       <button
                         key={cId}
                         onClick={() => navigate(`/infrastructure/${cId}`)}
                         className="text-xs px-2.5 py-1 rounded-md border border-border bg-secondary text-foreground hover:bg-accent transition-colors"
                       >
-                        {connected ? connected.name : cId}
+                        {cId}
                       </button>
-                    );
-                  })}
+                    ))}
                 </div>
               </div>
             )}

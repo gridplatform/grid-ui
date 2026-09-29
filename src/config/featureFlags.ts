@@ -52,7 +52,7 @@ export const productFlags: Record<ProductFlagKey, boolean> = {
   alerts: false,
   apm: false,
   logging: false,
-  topology: false,
+  topology: true,
   admin: true,
 };
 
