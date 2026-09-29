@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import AppShell from "@/components/AppShell";
+import { GridLogo } from "@/components/GridLogo";
 import { useBranding } from "@/contexts/BrandingContext";
 import {
   Users, Key, Shield, Lock, UserPlus, Search, X, ChevronDown,
@@ -679,7 +680,7 @@ const AdminPage = () => {
               {brandingLogoInput ? (
                 <img src={brandingLogoInput} alt="Logo preview" className="w-10 h-10 rounded-lg object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
               ) : (
-                <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center"><span className="text-primary-foreground text-lg font-bold">G</span></div>
+                <GridLogo className="w-10 h-10" alt="Grid" />
               )}
               <span className="text-foreground text-lg font-semibold">{brandingOrgName || "Grid"}</span>
             </div>

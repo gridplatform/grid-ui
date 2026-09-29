@@ -4,9 +4,13 @@ import AppShell from "@/components/AppShell";
 import { generateStressResources } from "@/data/stressTestData";
 import {
   Server, Cpu, HardDrive, Activity, ChevronRight, Search,
-  Database, Cloud, Network, AlertTriangle, X,
+  Database, Cloud, Network,
   Monitor, Globe, Box, Timer, Layers, Shield, Container,
 } from "lucide-react";
+import { useInfrastructures } from "@/hooks/useGridApi";
+import type { InfrastructureListItem } from "@/types/api";
+
+const USE_MOCK = import.meta.env.VITE_USE_MOCK_DATA !== "false";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -31,14 +35,32 @@ export interface Resource {
   provider: string;
   connections: string[];
   config: Record<string, any>;
-  cluster?: string; // parent cluster id for k8s components
+  cluster?: string;
 }
-
-// ─── Mock data (3,000 resources for stress testing) ──────────────────────────
 
 export const mockResources: Resource[] = generateStressResources();
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+function mapListItem(item: InfrastructureListItem): Resource {
+  const status: ResourceStatus =
+    item.status === "running" || item.status === "error" || item.status === "degraded"
+      ? item.status
+      : "stopped";
+  return {
+    id: item.id,
+    name: item.name,
+    type: (item.type as ResourceType) || "single-vm",
+    status,
+    region: item.region,
+    ip: item.ip || "—",
+    cpu: item.cpu || "—",
+    memory: item.memory || "—",
+    environment: item.environment,
+    provider: item.provider,
+    connections: item.connections || [],
+    config: item.config || {},
+    cluster: item.cluster,
+  };
+}
 
 const typeIcons: Record<ResourceType, React.ElementType> = {
   "single-vm": Monitor,
@@ -81,15 +103,12 @@ const statusColors: Record<ResourceStatus, string> = {
   degraded: "bg-warning/10 text-warning",
 };
 
-// Filter categories for type dropdown
 const typeFilterGroups = [
   { label: "VMs", types: ["single-vm", "vm-cluster"] as ResourceType[] },
   { label: "GPU / ML", types: ["gpu-node", "gpu-pool"] as ResourceType[] },
   { label: "Kubernetes", types: ["k8s-ingress", "k8s-deployment", "k8s-service", "k8s-cronjob", "k8s-statefulset", "k8s-daemonset", "k8s-storage"] as ResourceType[] },
   { label: "Other", types: ["network", "managed-service"] as ResourceType[] },
 ];
-
-// ─── Component ───────────────────────────────────────────────────────────────
 
 const InfrastructurePage = () => {
   const navigate = useNavigate();
@@ -98,9 +117,17 @@ const InfrastructurePage = () => {
   const [envFilter, setEnvFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<ResourceStatus | "">("");
 
+  const { data: liveItems, isLoading, error } = useInfrastructures();
+
+  const resources = useMemo(() => {
+    if (USE_MOCK) return mockResources;
+    return (liveItems || []).map(mapListItem);
+  }, [liveItems]);
+
   const filtered = useMemo(() => {
-    return mockResources.filter((r) => {
-      const matchSearch = !searchQuery ||
+    return resources.filter((r) => {
+      const matchSearch =
+        !searchQuery ||
         r.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         r.type.includes(searchQuery.toLowerCase()) ||
         r.region.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -110,16 +137,15 @@ const InfrastructurePage = () => {
       const matchStatus = !statusFilter || r.status === statusFilter;
       return matchSearch && matchType && matchEnv && matchStatus;
     });
-  }, [searchQuery, typeFilter, envFilter, statusFilter]);
+  }, [resources, searchQuery, typeFilter, envFilter, statusFilter]);
 
-  const runningCount = mockResources.filter((r) => r.status === "running").length;
-  const stoppedCount = mockResources.filter((r) => r.status === "stopped").length;
-  const errorCount = mockResources.filter((r) => r.status === "error" || r.status === "degraded").length;
+  const runningCount = resources.filter((r) => r.status === "running").length;
+  const stoppedCount = resources.filter((r) => r.status === "stopped").length;
+  const errorCount = resources.filter((r) => r.status === "error" || r.status === "degraded").length;
 
   return (
     <AppShell activeTab="infrastructure">
       <div className="p-6 space-y-6">
-        {/* Status Widgets */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="p-4 rounded-lg border border-border bg-card flex items-center gap-4">
             <div className="w-10 h-10 rounded-lg bg-success/10 flex items-center justify-center">
@@ -150,7 +176,12 @@ const InfrastructurePage = () => {
           </div>
         </div>
 
-        {/* Search + Filters + View toggle */}
+        {!USE_MOCK && error && (
+          <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            {error instanceof Error ? error.message : "Failed to load infrastructures"}
+          </div>
+        )}
+
         <div className="flex items-center gap-3 flex-wrap">
           <div className="relative flex-1 min-w-[240px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -171,7 +202,9 @@ const InfrastructurePage = () => {
             {typeFilterGroups.map((group) => (
               <optgroup key={group.label} label={group.label}>
                 {group.types.map((t) => (
-                  <option key={t} value={t}>{typeLabels[t]}</option>
+                  <option key={t} value={t}>
+                    {typeLabels[t]}
+                  </option>
                 ))}
               </optgroup>
             ))}
@@ -184,6 +217,9 @@ const InfrastructurePage = () => {
             <option value="">All environments</option>
             <option value="Production">Production</option>
             <option value="Staging">Staging</option>
+            <option value="dev">dev</option>
+            <option value="production">production</option>
+            <option value="staging">staging</option>
           </select>
           <select
             value={statusFilter}
@@ -196,13 +232,16 @@ const InfrastructurePage = () => {
             <option value="error">Error</option>
             <option value="degraded">Degraded</option>
           </select>
-
         </div>
 
         <div className="rounded-lg border border-border bg-card overflow-hidden">
           <div className="p-4 border-b border-border flex items-center justify-between">
-            <h2 className="text-sm font-medium text-foreground">Resources</h2>
-            <span className="text-xs text-muted-foreground">{filtered.length} items</span>
+            <h2 className="text-sm font-medium text-foreground">
+              {USE_MOCK ? "Resources" : "Infrastructures"}
+            </h2>
+            <span className="text-xs text-muted-foreground">
+              {!USE_MOCK && isLoading ? "loading…" : `${filtered.length} items`}
+            </span>
           </div>
           <div className="grid grid-cols-[minmax(200px,2fr)_120px_90px_100px_100px_120px_80px_80px_32px] gap-3 px-4 py-2 text-xs text-muted-foreground font-medium uppercase tracking-wider border-b border-border">
             <span>Name</span>
@@ -215,31 +254,43 @@ const InfrastructurePage = () => {
             <span>RAM</span>
             <span></span>
           </div>
-          {filtered.map((resource) => {
-            const TypeIcon = typeIcons[resource.type];
-            return (
-              <div
-                key={resource.id}
-                onClick={() => navigate(`/infrastructure/${resource.id}`)}
-                className="grid grid-cols-[minmax(200px,2fr)_120px_90px_100px_100px_120px_80px_80px_32px] gap-3 px-4 py-3 items-center border-b border-border last:border-b-0 hover:bg-secondary/50 cursor-pointer transition-colors"
-              >
-                <div className="flex items-center gap-2">
-                  <TypeIcon className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                  <span className="text-sm text-foreground font-medium">{resource.name}</span>
+          {!USE_MOCK && !isLoading && filtered.length === 0 ? (
+            <div className="p-8 text-center text-sm text-muted-foreground">
+              No infrastructures yet. Create one from Deployments (Plan or Apply), or import via CLI.
+            </div>
+          ) : (
+            filtered.map((resource) => {
+              const TypeIcon = typeIcons[resource.type] || Monitor;
+              return (
+                <div
+                  key={resource.id}
+                  onClick={() => navigate(`/infrastructure/${resource.id}`)}
+                  className="grid grid-cols-[minmax(200px,2fr)_120px_90px_100px_100px_120px_80px_80px_32px] gap-3 px-4 py-3 items-center border-b border-border last:border-b-0 hover:bg-secondary/50 cursor-pointer transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <TypeIcon className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                    <span className="text-sm text-foreground font-medium">{resource.name}</span>
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    {typeLabels[resource.type] || resource.type}
+                  </span>
+                  <span
+                    className={`text-xs font-medium px-2 py-0.5 rounded-full w-fit ${statusColors[resource.status]}`}
+                  >
+                    {resource.status}
+                  </span>
+                  <span className="text-xs text-muted-foreground">{resource.region}</span>
+                  <span className="text-xs text-muted-foreground">{resource.environment}</span>
+                  <span className="text-xs text-muted-foreground font-mono">
+                    {resource.cluster || "—"}
+                  </span>
+                  <span className="text-xs text-muted-foreground">{resource.cpu}</span>
+                  <span className="text-xs text-muted-foreground">{resource.memory}</span>
+                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
                 </div>
-                <span className="text-xs text-muted-foreground">{typeLabels[resource.type]}</span>
-                <span className={`text-xs font-medium px-2 py-0.5 rounded-full w-fit ${statusColors[resource.status]}`}>
-                  {resource.status}
-                </span>
-                <span className="text-xs text-muted-foreground">{resource.region}</span>
-                <span className="text-xs text-muted-foreground">{resource.environment}</span>
-                <span className="text-xs text-muted-foreground font-mono">{resource.cluster || "—"}</span>
-                <span className="text-xs text-muted-foreground">{resource.cpu}</span>
-                <span className="text-xs text-muted-foreground">{resource.memory}</span>
-                <ChevronRight className="w-4 h-4 text-muted-foreground" />
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
       </div>
     </AppShell>
