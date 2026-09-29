@@ -21,6 +21,7 @@ import {
   useInfrastructures,
   useRestoreInfrastructureConfig,
 } from "@/hooks/useGridApi";
+import { useAuth } from "@/contexts/AuthContext";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { InfrastructureConfigSyncPanel } from "@/components/InfrastructureConfigSyncPanel";
 import type { InfrastructureListItem } from "@/types/api";
@@ -197,6 +198,8 @@ const TABLE_COLS =
 
 const InfrastructurePage = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const { envSlug, selectedProject, selectedEnv, projectSlug } = useWorkspace();
   const [engine, setEngine] = useState<DeployEngine>("terraform");
   const [searchQuery, setSearchQuery] = useState("");
@@ -321,16 +324,24 @@ const InfrastructurePage = () => {
 
   const handleDestroy = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!isAdmin) {
+      setActionNote("Only admins can destroy infrastructure.");
+      return;
+    }
     if (
       !window.confirm(
-        "Destroy cloud resources for this unit that was removed from config? This cannot be undone."
+        "Destroy cloud resources for this unit that was removed from config? This creates a destroy release and cannot be undone."
       )
     ) {
       return;
     }
     try {
-      const d = await destroyInfra.mutateAsync(id);
-      setActionNote(`Destroy started: ${d.id}`);
+      const release = await destroyInfra.mutateAsync(id);
+      setActionNote(
+        `Destroy release ${release.status}` +
+          (release.createdBy ? ` by ${release.createdBy}` : "") +
+          ` — see Releases.`
+      );
       await refetch();
     } catch (err) {
       setActionNote(err instanceof Error ? err.message : "Destroy failed");
@@ -441,14 +452,16 @@ const InfrastructurePage = () => {
                     >
                       Restore to config
                     </button>
-                    <button
-                      type="button"
-                      onClick={(e) => void handleDestroy(r.id, e)}
-                      disabled={destroyInfra.isPending}
-                      className="px-2.5 py-1 text-xs border border-destructive/40 text-destructive rounded-md hover:bg-destructive/10 disabled:opacity-50"
-                    >
-                      Destroy
-                    </button>
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        onClick={(e) => void handleDestroy(r.id, e)}
+                        disabled={destroyInfra.isPending}
+                        className="px-2.5 py-1 text-xs border border-destructive/40 text-destructive rounded-md hover:bg-destructive/10 disabled:opacity-50"
+                      >
+                        Destroy
+                      </button>
+                    )}
                   </div>
                 </li>
               ))}
