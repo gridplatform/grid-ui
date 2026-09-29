@@ -14,6 +14,7 @@ import {
   Terminal,
   FileSearch,
   Play,
+  Trash2,
 } from "lucide-react";
 import {
   useCreateRelease,
@@ -22,6 +23,7 @@ import {
   usePendingApprovals,
   useReleases,
 } from "@/hooks/useGridApi";
+import { useAuth } from "@/contexts/AuthContext";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { DeploymentLiveLogs } from "@/components/DeploymentLiveLogs";
 import type { Release, ReleaseMode, ReleaseStatus } from "@/types/api";
@@ -41,10 +43,13 @@ const statusConfig: Partial<
 const modeLabels: Record<ReleaseMode, string> = {
   plan: "Plan",
   apply: "Apply (live)",
+  destroy: "Destroy",
   custom: "Custom CLI",
 };
 
 const ReleasesPage = () => {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const { projectSlug, selectedEnv, selectedProject } = useWorkspace();
   const { data: releases = [], isLoading, error } = useReleases();
   const { data: approvals = [] } = usePendingApprovals();
@@ -135,6 +140,10 @@ const ReleasesPage = () => {
 
   const handleCreate = async () => {
     setSubmitNote(null);
+    if (mode === "destroy" && !isAdmin) {
+      setSubmitNote("Only admins can destroy infrastructure.");
+      return;
+    }
     if (!environment) {
       setSubmitNote("Pick an environment.");
       return;
@@ -255,7 +264,8 @@ const ReleasesPage = () => {
               Releases
             </h1>
             <p className="text-xs text-muted-foreground mt-1">
-              Plan or apply desired-state changes. One release runs at a time; others queue.
+              Plan, apply, or (admins) destroy desired-state changes. One release runs at a time;
+              others queue.
               {approvals.length > 0 ? ` ${approvals.length} pending approval(s).` : ""}
             </p>
           </div>
@@ -446,12 +456,17 @@ const ReleasesPage = () => {
 
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-foreground">Release type</label>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div
+                    className={`grid gap-2 ${isAdmin ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"}`}
+                  >
                     {(
                       [
-                        { id: "plan", label: "Plan", icon: FileSearch },
-                        { id: "apply", label: "Apply", icon: Play },
-                        { id: "custom", label: "Custom", icon: Terminal },
+                        { id: "plan" as const, label: "Plan", icon: FileSearch },
+                        { id: "apply" as const, label: "Apply", icon: Play },
+                        ...(isAdmin
+                          ? [{ id: "destroy" as const, label: "Destroy", icon: Trash2 }]
+                          : []),
+                        { id: "custom" as const, label: "Custom", icon: Terminal },
                       ] as const
                     ).map((opt) => (
                       <button
@@ -460,11 +475,17 @@ const ReleasesPage = () => {
                         onClick={() => setMode(opt.id)}
                         className={`flex flex-col items-center gap-1 rounded-md border px-2 py-2.5 text-xs transition-colors ${
                           mode === opt.id
-                            ? "border-primary/50 bg-primary/10 text-foreground"
+                            ? opt.id === "destroy"
+                              ? "border-destructive/50 bg-destructive/10 text-foreground"
+                              : "border-primary/50 bg-primary/10 text-foreground"
                             : "border-border bg-secondary/30 text-muted-foreground hover:bg-secondary/60"
                         }`}
                       >
-                        <opt.icon className="w-4 h-4" />
+                        <opt.icon
+                          className={`w-4 h-4 ${
+                            mode === opt.id && opt.id === "destroy" ? "text-destructive" : ""
+                          }`}
+                        />
                         {opt.label}
                       </button>
                     ))}
@@ -472,6 +493,8 @@ const ReleasesPage = () => {
                   <p className="text-[11px] text-muted-foreground">
                     {mode === "plan" && "Dry-run: show what would change (terraform plan)."}
                     {mode === "apply" && "Live: apply desired-state JSON to the cloud."}
+                    {mode === "destroy" &&
+                      "Admin only: tear down the selected unit (terraform destroy)."}
                     {mode === "custom" && "Backdoor: run an allowed grid CLI command."}
                   </p>
                 </div>
@@ -594,10 +617,20 @@ const ReleasesPage = () => {
                   type="button"
                   onClick={() => void handleCreate()}
                   disabled={createRelease.isPending}
-                  className="px-3 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
+                  className={`px-3 py-2 text-sm rounded-md hover:opacity-90 disabled:opacity-50 inline-flex items-center justify-center gap-1.5 ${
+                    mode === "destroy"
+                      ? "bg-destructive text-destructive-foreground"
+                      : "bg-primary text-primary-foreground"
+                  }`}
                 >
                   {createRelease.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  {active ? "Queue release" : "Start release"}
+                  {mode === "destroy"
+                    ? active
+                      ? "Queue destroy"
+                      : "Start destroy"
+                    : active
+                      ? "Queue release"
+                      : "Start release"}
                 </button>
               </div>
             </div>

@@ -30,7 +30,7 @@ export type DeploymentStatus =
   | "cancelled";
 export type LifecycleMode = "plan" | "apply" | "destroy";
 export type ReleaseStatus = "queued" | "pending_approval" | "approved" | "deploying" | "success" | "failed" | "rolled_back";
-export type ReleaseMode = "plan" | "apply" | "custom";
+export type ReleaseMode = "plan" | "apply" | "destroy" | "custom";
 export type AlertSeverity = "critical" | "warning" | "info";
 export type AlertStatus = "firing" | "acknowledged" | "resolved";
 
@@ -174,6 +174,7 @@ export interface InfrastructureListItem {
   connections: string[];
   cluster?: string;
   config?: Record<string, unknown>;
+  gitPath?: string;
 }
 
 // ─── Deployment Types ───────────────────────────────────────────────────────

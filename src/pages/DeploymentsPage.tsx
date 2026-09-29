@@ -37,9 +37,10 @@ import {
   enabledTargetsForCategory,
   enabledTerraformCategories,
 } from "@/config/features";
+import { categoryForResourceType } from "@/lib/resourceCategory";
 import { useDeployments, useInfrastructures } from "@/hooks/useGridApi";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
-import type { Deployment as ApiDeployment } from "@/types/api";
+import type { Deployment as ApiDeployment, InfrastructureListItem } from "@/types/api";
 import { useNavigate } from "react-router-dom";
 import { DeploymentLiveLogs } from "@/components/DeploymentLiveLogs";
 
@@ -51,6 +52,7 @@ interface DeploymentRow {
   name: string;
   engine: DeployEngine;
   provider: string;
+  /** Catalog subtype: vpc, ec2-instance, … (never plan/apply). */
   moduleOrKind: string;
   environment: string;
   status: DeploymentStatus;
@@ -59,13 +61,37 @@ interface DeploymentRow {
   details: string;
 }
 
-const statusConfig: Record<DeploymentStatus, { label: string; color: string; icon: React.ElementType }> = {
+/** Live unit shown on Deployments (running / degraded in cloud). */
+interface LiveUnitRow {
+  id: string;
+  name: string;
+  subtype: string;
+  category: TerraformCategory;
+  provider: string;
+  status: string;
+  region: string;
+  environment: string;
+}
+
+const statusConfig: Record<
+  DeploymentStatus,
+  { label: string; color: string; icon: React.ElementType }
+> = {
   queued: { label: "Queued", color: "bg-muted text-muted-foreground", icon: Clock },
   pending: { label: "Pending", color: "bg-muted text-muted-foreground", icon: Clock },
   planning: { label: "Planning", color: "bg-info/10 text-info", icon: Loader2 },
   running: { label: "Running", color: "bg-blue-500/10 text-blue-400", icon: Loader2 },
   success: { label: "Success", color: "bg-success/10 text-success", icon: CheckCircle2 },
   failed: { label: "Failed", color: "bg-destructive/10 text-destructive", icon: XCircle },
+};
+
+const liveStatusColor: Record<string, string> = {
+  running: "bg-success/10 text-success",
+  degraded: "bg-warning/10 text-warning",
+  error: "bg-destructive/10 text-destructive",
+  pending: "bg-muted text-muted-foreground",
+  stopped: "bg-muted text-muted-foreground",
+  stale: "bg-warning/10 text-warning",
 };
 
 const tfIcons: Record<TerraformCategory, React.ElementType> = {
@@ -89,43 +115,56 @@ const tfIcons: Record<TerraformCategory, React.ElementType> = {
 
 const targetKey = (target: TerraformTarget) => `${target.provider}.${target.resourceType}`;
 
-function mapApiDeployment(d: ApiDeployment): DeploymentRow {
+/** Subtype from unit type or git path (`…/vpc/name.json` → vpc). */
+function subtypeFromInfra(item: InfrastructureListItem): string {
+  const typed = (item.type || "").trim().toLowerCase();
+  if (typed && typed !== "unknown" && typed !== "plan" && typed !== "apply") return typed;
+  const parts = (item.gitPath || "").split("/").filter(Boolean);
+  if (parts.length >= 2) {
+    const folder = parts[parts.length - 2].toLowerCase();
+    if (folder && folder !== "projects") return folder;
+  }
+  const name = (item.name || "").toLowerCase();
+  if (/vpc/.test(name)) return "vpc";
+  if (/ec2|vm/.test(name)) return "ec2-instance";
+  return name || "unknown";
+}
+
+function mapApiDeployment(
+  d: ApiDeployment,
+  infraById: Map<string, InfrastructureListItem>
+): DeploymentRow {
   const status = (d.status === "cancelled" ? "failed" : d.status) as DeploymentStatus;
   const mode = d.mode || undefined;
-  const moduleOrKind =
-    d.resourceType && d.resourceType !== mode ? d.resourceType : undefined;
+  const infra = d.infrastructureId ? infraById.get(d.infrastructureId) : undefined;
+  // Core often stores resourceType as "plan"/"apply" — prefer linked unit subtype.
+  const rawType = (d.resourceType || "").toLowerCase();
+  const subtype =
+    rawType && rawType !== "plan" && rawType !== "apply" && rawType !== "custom"
+      ? rawType
+      : infra
+        ? subtypeFromInfra(infra)
+        : "—";
+
   return {
     id: d.id,
     infrastructureId: d.infrastructureId,
-    name: d.name || d.infrastructureId.slice(0, 8),
+    name: d.name || d.infrastructureId?.slice(0, 8) || "deployment",
     engine: (d.engine as DeployEngine) || "terraform",
-    provider: d.provider || "—",
-    moduleOrKind: moduleOrKind || "—",
-    environment: d.environment || "—",
+    provider: d.provider || infra?.provider || "—",
+    moduleOrKind: subtype,
+    environment: d.environment || infra?.environment || "—",
     status: status in statusConfig ? status : "pending",
     mode,
     createdAt: d.startedAt ? new Date(d.startedAt).toLocaleString() : "",
     details: [
       mode ? `mode=${mode}` : null,
       d.progress != null ? `${d.progress}%` : null,
-      d.infrastructureId ? `infra ${d.infrastructureId.slice(0, 8)}` : null,
+      subtype !== "—" ? subtype : null,
     ]
       .filter(Boolean)
       .join(" · "),
   };
-}
-
-/** Infer catalog category from resource type / module name heuristics. */
-function guessCategory(resourceType?: string): TerraformCategory | null {
-  if (!resourceType) return null;
-  const t = resourceType.toLowerCase();
-  if (/ec2|instance|asg|autoscaling|compute-engine|gpu|vm/.test(t)) return "compute";
-  if (/vpc|subnet|network|nat|gateway|route/.test(t)) return "network";
-  if (/eks|gke|aks|kubernetes|cluster/.test(t)) return "kubernetes-cluster";
-  if (/rds|sql|postgres|mysql|dynamo|spanner|firestore/.test(t)) return "database";
-  if (/s3|gcs|bucket|ebs|disk|storage/.test(t)) return "storage";
-  if (/sagemaker|vertex|notebook|ml/.test(t)) return "ai-ml";
-  return "other";
 }
 
 const DeploymentsPage = () => {
@@ -141,79 +180,116 @@ const DeploymentsPage = () => {
   const [engine, setEngine] = useState<DeployEngine>("terraform");
   const [tfCategory, setTfCategory] = useState<TerraformCategory>(defaultCategory);
   const [k8sKind, setK8sKind] = useState<KubernetesWorkloadKind>("workload");
+  /** Only set when the user clicks a catalog card — never auto-select. */
   const [selectedTarget, setSelectedTarget] = useState<string | null>(null);
   const [watchingId, setWatchingId] = useState<string | null>(null);
 
   const { data: liveDeployments, isLoading: liveLoading, error: liveError } = useDeployments();
-  const { data: infrastructures = [] } = useInfrastructures({
+  const { data: infrastructures = [], isLoading: infraLoading } = useInfrastructures({
     project: selectedProject?.slug,
     environment: envSlug,
     enabled: !!selectedProject?.slug,
   });
 
   const categoryTargets = useMemo(() => enabledTargetsForCategory(tfCategory), [tfCategory]);
-  const activeTarget =
-    categoryTargets.find((t) => targetKey(t) === selectedTarget) ?? categoryTargets[0] ?? null;
+  const activeTarget = useMemo(
+    () =>
+      selectedTarget
+        ? categoryTargets.find((t) => targetKey(t) === selectedTarget) ?? null
+        : null,
+    [selectedTarget, categoryTargets]
+  );
 
   const infraById = useMemo(() => {
     const m = new Map(infrastructures.map((i) => [i.id, i]));
     return m;
   }, [infrastructures]);
 
+  /** Live cloud units for this workspace (Deployments focus). */
+  const liveUnits = useMemo((): LiveUnitRow[] => {
+    return infrastructures
+      .filter((i) => i.status === "running" || i.status === "degraded")
+      .map((i) => {
+        const subtype = subtypeFromInfra(i);
+        return {
+          id: i.id,
+          name: i.name,
+          subtype,
+          category: categoryForResourceType(subtype),
+          provider: i.provider || "—",
+          status: i.status,
+          region: i.region || "—",
+          environment: i.environment || envSlug || "—",
+        };
+      });
+  }, [infrastructures, envSlug]);
+
+  const liveInCategory = useMemo(() => {
+    return liveUnits.filter((u) => {
+      if (u.category !== tfCategory) return false;
+      if (activeTarget && u.subtype !== activeTarget.resourceType) {
+        // Allow close aliases (ec2 ↔ ec2-instance, vm ↔ ec2-instance)
+        const a = u.subtype;
+        const b = activeTarget.resourceType;
+        if (a === b) return true;
+        if (a.includes(b) || b.includes(a)) return true;
+        return false;
+      }
+      return true;
+    });
+  }, [liveUnits, tfCategory, activeTarget]);
+
   const scopedDeployments = useMemo(() => {
     const projectSlug = selectedProject?.slug;
     return (liveDeployments || [])
-      .map(mapApiDeployment)
+      .map((d) => mapApiDeployment(d, infraById))
       .filter((d) => {
-        // Environment scope from header
         if (envSlug && d.environment !== envSlug && d.environment !== "—") {
-          // Also accept via linked infra
           const infra = d.infrastructureId ? infraById.get(d.infrastructureId) : undefined;
           if (!infra || infra.environment !== envSlug) return false;
         }
         if (projectSlug && d.infrastructureId) {
           const infra = infraById.get(d.infrastructureId);
-          const p = infra?.project || "demo-app";
-          if (infra && p !== projectSlug) return false;
+          if (infra?.project && infra.project !== projectSlug) return false;
         }
         return true;
       })
       .reverse();
   }, [liveDeployments, envSlug, selectedProject?.slug, infraById]);
 
-  const filtered = useMemo(() => {
+  const recentRuns = useMemo(() => {
     return scopedDeployments.filter((d) => {
       if (d.engine !== engine) return false;
-      if (engine === "terraform") {
-        const cat = guessCategory(d.moduleOrKind !== "—" ? d.moduleOrKind : d.mode);
-        // If we can't guess, still show under current category when browsing "other" or show all in category loosely
-        if (cat && cat !== tfCategory && tfCategory !== "other") {
-          // Prefer showing when module matches selected target resource type
-          if (activeTarget && d.moduleOrKind === activeTarget.resourceType) return true;
-          return false;
-        }
-        if (selectedTarget && activeTarget) {
-          // Soft filter: if a catalog card is selected, prefer matching resourceType
-          if (d.moduleOrKind === activeTarget.resourceType) return true;
-          // Keep broader category matches when no exact module
-          if (d.moduleOrKind === "—" || d.moduleOrKind === d.mode) return cat === tfCategory || !cat;
-          return false;
-        }
+      if (engine !== "terraform") return true;
+      const cat = categoryForResourceType(d.moduleOrKind);
+      if (cat !== tfCategory && tfCategory !== "other") return false;
+      if (activeTarget) {
+        const a = d.moduleOrKind;
+        const b = activeTarget.resourceType;
+        if (a !== b && !a.includes(b) && !b.includes(a)) return false;
       }
       return true;
     });
-  }, [scopedDeployments, engine, tfCategory, selectedTarget, activeTarget]);
+  }, [scopedDeployments, engine, tfCategory, activeTarget]);
 
-  // Catalog counts for the selected category (read-only)
+  /** Catalog card counts = live units of that subtype (not broken plan/apply labels). */
   const catalogCounts = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const d of scopedDeployments.filter((x) => x.engine === "terraform")) {
-      const key = d.moduleOrKind !== "—" && d.moduleOrKind !== d.mode ? d.moduleOrKind : "";
-      if (!key) continue;
-      counts.set(key, (counts.get(key) || 0) + 1);
+    for (const u of liveUnits.filter((x) => x.category === tfCategory)) {
+      counts.set(u.subtype, (counts.get(u.subtype) || 0) + 1);
+      // Also bump catalog keys that alias this subtype
+      for (const t of categoryTargets) {
+        if (u.subtype === t.resourceType || u.subtype.includes(t.resourceType) || t.resourceType.includes(u.subtype)) {
+          if (u.subtype !== t.resourceType) {
+            counts.set(t.resourceType, (counts.get(t.resourceType) || 0) + 1);
+          }
+        }
+      }
     }
     return counts;
-  }, [scopedDeployments]);
+  }, [liveUnits, tfCategory, categoryTargets]);
+
+  const loading = liveLoading || infraLoading;
 
   return (
     <AppShell activeTab="deployments">
@@ -228,11 +304,19 @@ const DeploymentsPage = () => {
               </span>
             </h1>
             <p className="text-xs text-muted-foreground mt-1">
-              Catalog of what is deployed for{" "}
+              Live units currently deployed for{" "}
               <strong className="text-foreground">{selectedProject?.name || "project"}</strong>
               {" / "}
-              <strong className="text-foreground">{selectedEnv?.name || envSlug || "env"}</strong>.
-              Change desired state in Git, then use Releases to plan/apply.
+              <strong className="text-foreground">{selectedEnv?.name || envSlug || "env"}</strong>
+              . Full inventory (including stopped / pending) is on{" "}
+              <button
+                type="button"
+                onClick={() => navigate("/infrastructure")}
+                className="underline underline-offset-2 hover:text-foreground"
+              >
+                Infrastructure
+              </button>
+              .
             </p>
           </div>
         </div>
@@ -272,6 +356,7 @@ const DeploymentsPage = () => {
           {engine === "terraform"
             ? visibleCategories.map((cat) => {
                 const Icon = tfIcons[cat.id];
+                const n = liveUnits.filter((u) => u.category === cat.id).length;
                 return (
                   <button
                     key={cat.id}
@@ -287,6 +372,9 @@ const DeploymentsPage = () => {
                   >
                     <Icon className="w-4 h-4" />
                     {cat.label}
+                    {n > 0 && (
+                      <span className="text-[10px] text-muted-foreground font-mono">{n}</span>
+                    )}
                   </button>
                 );
               })
@@ -333,7 +421,7 @@ const DeploymentsPage = () => {
                     {target.provider}.{target.resourceType}
                   </div>
                   <div className="text-[10px] text-muted-foreground mt-1.5">
-                    {count} run{count === 1 ? "" : "s"} in this env
+                    {count} live in this env
                   </div>
                 </button>
               );
@@ -341,25 +429,32 @@ const DeploymentsPage = () => {
           </div>
         )}
 
+        {/* Live units */}
         <div className="rounded-lg border border-border bg-card overflow-hidden">
           <div className="p-4 border-b border-border flex items-center justify-between gap-2">
             <h2 className="text-sm font-medium text-foreground">
+              Live ·{" "}
               {engine === "terraform"
                 ? TERRAFORM_CATEGORIES.find((c) => c.id === tfCategory)?.label
                 : KUBERNETES_KINDS.find((k) => k.id === k8sKind)?.label}
             </h2>
             <span className="text-xs text-muted-foreground">
-              {liveLoading ? "loading…" : `${filtered.length} runs`}
+              {loading ? "loading…" : `${liveInCategory.length} unit${liveInCategory.length === 1 ? "" : "s"}`}
             </span>
           </div>
 
-          {filtered.length === 0 ? (
+          {engine === "kubernetes" ? (
+            <div className="p-8 text-center text-sm text-muted-foreground">
+              Workload deployments will appear here when cluster units are applied.
+            </div>
+          ) : liveInCategory.length === 0 ? (
             <div className="p-8 text-center space-y-2">
               <p className="text-sm text-muted-foreground">
-                No deployment runs in this environment yet.
+                No live {TERRAFORM_CATEGORIES.find((c) => c.id === tfCategory)?.label.toLowerCase()}{" "}
+                units in this environment.
               </p>
               <p className="text-xs text-muted-foreground max-w-md mx-auto">
-                Commit desired-state JSON to the config repo, Sync on Infrastructure, then create a{" "}
+                Apply a{" "}
                 <button
                   type="button"
                   onClick={() => navigate("/releases")}
@@ -367,23 +462,67 @@ const DeploymentsPage = () => {
                 >
                   Release
                 </button>{" "}
-                (plan or apply). This page is read-only.
+                to create cloud resources. Pending / stopped units stay on Infrastructure.
               </p>
             </div>
           ) : (
             <div className="divide-y divide-border">
-              {filtered.map((dep) => {
+              {liveInCategory.map((unit) => (
+                <button
+                  key={unit.id}
+                  type="button"
+                  onClick={() => navigate(`/infrastructure/${unit.id}`)}
+                  className="w-full flex flex-col sm:flex-row sm:items-center px-4 py-3 gap-2 hover:bg-secondary/50 text-left transition-colors"
+                >
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm text-foreground font-medium">{unit.name}</span>
+                        <span className="text-xs text-muted-foreground font-mono">{unit.subtype}</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {unit.provider} · {unit.region} · {unit.environment}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 flex-shrink-0 pl-0 sm:pl-0">
+                    <span
+                      className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                        liveStatusColor[unit.status] || "bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      {unit.status}
+                    </span>
+                    <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Recent plan/apply runs for this category */}
+        <div className="rounded-lg border border-border bg-card overflow-hidden">
+          <div className="p-4 border-b border-border flex items-center justify-between gap-2">
+            <h2 className="text-sm font-medium text-foreground">Recent runs</h2>
+            <span className="text-xs text-muted-foreground">
+              {loading ? "loading…" : `${recentRuns.length} run${recentRuns.length === 1 ? "" : "s"}`}
+            </span>
+          </div>
+
+          {recentRuns.length === 0 ? (
+            <div className="p-6 text-center text-xs text-muted-foreground">
+              No plan/apply runs for this category yet.
+            </div>
+          ) : (
+            <div className="divide-y divide-border">
+              {recentRuns.map((dep) => {
                 const sc = statusConfig[dep.status] ?? statusConfig.pending;
                 const StatusIcon = sc.icon;
                 return (
                   <div
                     key={dep.id}
-                    onClick={() => {
-                      setWatchingId(dep.id);
-                      if (dep.infrastructureId) {
-                        navigate(`/infrastructure/${dep.infrastructureId}`);
-                      }
-                    }}
+                    onClick={() => setWatchingId(dep.id)}
                     className="flex flex-col sm:flex-row sm:items-center px-4 py-3 gap-2 hover:bg-secondary/50 cursor-pointer transition-colors"
                   >
                     <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -395,15 +534,12 @@ const DeploymentsPage = () => {
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-sm text-foreground font-medium">{dep.name}</span>
-                          <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
-                            {dep.engine}
-                          </span>
                           {dep.mode && (
                             <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
                               {dep.mode}
                             </span>
                           )}
-                          {dep.moduleOrKind && dep.moduleOrKind !== "—" && (
+                          {dep.moduleOrKind !== "—" && (
                             <span className="text-xs text-muted-foreground font-mono">
                               {dep.moduleOrKind}
                             </span>
@@ -412,15 +548,13 @@ const DeploymentsPage = () => {
                         <p className="text-xs text-muted-foreground">{dep.details}</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3 sm:gap-4 flex-shrink-0 pl-7 sm:pl-0">
-                      <span className="text-xs text-muted-foreground font-mono">{dep.provider}</span>
+                    <div className="flex items-center gap-3 sm:gap-4 flex-shrink-0">
                       <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${sc.color}`}>
                         {sc.label}
                       </span>
                       <span className="text-xs text-muted-foreground hidden sm:inline">
                         {dep.createdAt}
                       </span>
-                      <ChevronRight className="w-4 h-4 text-muted-foreground" />
                     </div>
                   </div>
                 );

@@ -149,16 +149,17 @@ export function useInfrastructure(id: string) {
 }
 
 /**
- * Deploy infrastructure (legacy alias → apply)
- * POST /api/v1/infrastructures/:id/deploy
+ * Deploy infrastructure (legacy alias → apply release)
+ * POST /api/v1/infrastructures/:id/apply
  */
 export function useDeployInfrastructure() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (id: string) =>
-      gridFetch<Deployment>(`/infrastructures/${id}/apply`, { method: "POST" }),
+      gridFetch<Release>(`/infrastructures/${id}/apply`, { method: "POST" }),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["releases"] });
       queryClient.invalidateQueries({ queryKey: ["infrastructures"] });
       queryClient.invalidateQueries({ queryKey: ["deployments"] });
     },
@@ -193,30 +194,32 @@ export function useUpdateInfrastructure() {
 }
 
 /**
- * POST /api/v1/infrastructures/:id/plan
+ * POST /api/v1/infrastructures/:id/plan — creates a plan release (audit trail)
  */
 export function usePlanInfrastructure() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (id: string) =>
-      gridFetch<Deployment>(`/infrastructures/${id}/plan`, { method: "POST" }),
+      gridFetch<Release>(`/infrastructures/${id}/plan`, { method: "POST" }),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["releases"] });
       queryClient.invalidateQueries({ queryKey: ["deployments"] });
     },
   });
 }
 
 /**
- * POST /api/v1/infrastructures/:id/apply
+ * POST /api/v1/infrastructures/:id/apply — creates an apply release (audit trail)
  */
 export function useApplyInfrastructure() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (id: string) =>
-      gridFetch<Deployment>(`/infrastructures/${id}/apply`, { method: "POST" }),
+      gridFetch<Release>(`/infrastructures/${id}/apply`, { method: "POST" }),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["releases"] });
       queryClient.invalidateQueries({ queryKey: ["infrastructures"] });
       queryClient.invalidateQueries({ queryKey: ["deployments"] });
     },
@@ -224,15 +227,16 @@ export function useApplyInfrastructure() {
 }
 
 /**
- * POST /api/v1/infrastructures/:id/destroy — real terraform destroy
+ * POST /api/v1/infrastructures/:id/destroy — creates a destroy release (admin only)
  */
 export function useDestroyInfrastructure() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (id: string) =>
-      gridFetch<Deployment>(`/infrastructures/${id}/destroy`, { method: "POST" }),
+      gridFetch<Release>(`/infrastructures/${id}/destroy`, { method: "POST" }),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["releases"] });
       queryClient.invalidateQueries({ queryKey: ["infrastructures"] });
       queryClient.invalidateQueries({ queryKey: ["deployments"] });
     },

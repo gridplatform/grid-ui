@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import AppShell from "@/components/AppShell";
 import {
-  ArrowLeft, Save, X, Sparkles, Loader2, CheckCircle2, XCircle,
+  ArrowLeft, Save, Sparkles, Loader2, CheckCircle2, XCircle,
   AlertTriangle, Box,
 } from "lucide-react";
 import { type Resource } from "./InfrastructurePage";
@@ -12,12 +12,15 @@ import {
   useDriftCheck,
   useInfrastructure,
   usePlanInfrastructure,
+  useRelease,
   useRestoreInfrastructureConfig,
   useUpdateInfrastructure,
 } from "@/hooks/useGridApi";
+import { useAuth } from "@/contexts/AuthContext";
 import { DeploymentLiveLogs } from "@/components/DeploymentLiveLogs";
 import { categoryForResourceType, categoryLabel } from "@/lib/resourceCategory";
 import type { TerraformCategory } from "@/lib/deployContract";
+import type { ReleaseMode } from "@/types/api";
 
 const statusColors: Record<string, string> = {
   running: "bg-success/10 text-success",
@@ -40,6 +43,8 @@ interface AiAnalysis {
 const InfrastructureDetailPage = () => {
   const { resourceId } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
 
   const { data: liveInfra, isLoading: liveLoading, refetch } = useInfrastructure(resourceId || "");
   const updateInfra = useUpdateInfrastructure();
@@ -102,6 +107,8 @@ const InfrastructureDetailPage = () => {
   const [editedJson, setEditedJson] = useState("");
   const [actionNote, setActionNote] = useState<string | null>(null);
   const [watchingId, setWatchingId] = useState<string | null>(null);
+  const [activeReleaseId, setActiveReleaseId] = useState<string | null>(null);
+  const { data: activeRelease } = useRelease(activeReleaseId || "");
 
   const [aiLoading, setAiLoading] = useState(false);
   const [aiResult, setAiResult] = useState<AiAnalysis | null>(null);
@@ -113,6 +120,20 @@ const InfrastructureDetailPage = () => {
       setEditedJson(JSON.stringify(resource.config, null, 2));
     }
   }, [resource?.id, resource?.config, editMode]);
+
+  useEffect(() => {
+    if (activeRelease?.deploymentId) {
+      setWatchingId(activeRelease.deploymentId);
+    }
+    if (!activeRelease) return;
+    setActionNote(
+      `${activeRelease.name}: ${activeRelease.status}` +
+        (activeRelease.message ? ` — ${activeRelease.message}` : "") +
+        `. Logged under Releases` +
+        (activeRelease.createdBy ? ` by ${activeRelease.createdBy}` : "") +
+        "."
+    );
+  }, [activeRelease]);
 
   if (liveLoading) {
     return (
@@ -132,6 +153,12 @@ const InfrastructureDetailPage = () => {
 
   const TypeIcon = Box;
   const isLive = !!liveInfra;
+  const releaseBusy =
+    planInfra.isPending ||
+    applyInfra.isPending ||
+    destroyInfra.isPending ||
+    activeRelease?.status === "queued" ||
+    activeRelease?.status === "deploying";
 
   const startEdit = () => {
     setEditedJson(JSON.stringify(resource.config, null, 2));
@@ -151,39 +178,36 @@ const InfrastructureDetailPage = () => {
     }
   };
 
-  const runPlan = async () => {
+  const startLifecycleRelease = async (
+    mode: Extract<ReleaseMode, "plan" | "apply" | "destroy">
+  ) => {
     if (!resourceId || !isLive) return;
-    try {
-      const d = await planInfra.mutateAsync(resourceId);
-      setWatchingId(d.id);
-      setActionNote(`Plan started: ${d.id}`);
-    } catch (e) {
-      setActionNote(e instanceof Error ? e.message : "Plan failed");
-    }
-  };
-
-  const runApply = async () => {
-    if (!resourceId || !isLive) return;
-    try {
-      const d = await applyInfra.mutateAsync(resourceId);
-      setWatchingId(d.id);
-      setActionNote(`Apply started: ${d.id}`);
-    } catch (e) {
-      setActionNote(e instanceof Error ? e.message : "Apply failed");
-    }
-  };
-
-  const runDestroy = async () => {
-    if (!resourceId || !isLive) return;
-    if (!window.confirm("Destroy all cloud resources for this infrastructure? This cannot be undone.")) {
-      return;
+    if (mode === "destroy") {
+      if (!isAdmin) {
+        setActionNote("Only admins can destroy infrastructure.");
+        return;
+      }
+      if (
+        !window.confirm(
+          "Destroy all cloud resources for this infrastructure? This creates a destroy release and cannot be undone."
+        )
+      ) {
+        return;
+      }
     }
     try {
-      const d = await destroyInfra.mutateAsync(resourceId);
-      setWatchingId(d.id);
-      setActionNote(`Destroy started: ${d.id}`);
+      const mut =
+        mode === "plan" ? planInfra : mode === "apply" ? applyInfra : destroyInfra;
+      const release = await mut.mutateAsync(resourceId);
+      setActiveReleaseId(release.id);
+      if (release.deploymentId) setWatchingId(release.deploymentId);
+      setActionNote(
+        release.status === "queued"
+          ? `${mode} release queued — only one runs at a time. See Releases for the full log.`
+          : `${mode} release started by ${release.createdBy || "you"}. See Releases for the audit trail.`
+      );
     } catch (e) {
-      setActionNote(e instanceof Error ? e.message : "Destroy failed");
+      setActionNote(e instanceof Error ? e.message : `${mode} failed`);
     }
   };
 
@@ -270,13 +294,15 @@ const InfrastructureDetailPage = () => {
                 >
                   Restore to config
                 </button>
-                <button
-                  onClick={() => void runDestroy()}
-                  disabled={destroyInfra.isPending}
-                  className="px-3 py-1.5 text-sm border border-destructive/40 text-destructive rounded-md hover:bg-destructive/10 disabled:opacity-50"
-                >
-                  Destroy
-                </button>
+                {isAdmin && (
+                  <button
+                    onClick={() => void startLifecycleRelease("destroy")}
+                    disabled={releaseBusy}
+                    className="px-3 py-1.5 text-sm border border-destructive/40 text-destructive rounded-md hover:bg-destructive/10 disabled:opacity-50"
+                  >
+                    Destroy
+                  </button>
+                )}
               </>
             )}
             {isLive && liveInfra?.status !== "destroyed" && liveInfra?.status !== "stale" && (
@@ -289,26 +315,28 @@ const InfrastructureDetailPage = () => {
                   Check drift
                 </button>
                 <button
-                  onClick={() => void runPlan()}
-                  disabled={planInfra.isPending}
+                  onClick={() => void startLifecycleRelease("plan")}
+                  disabled={releaseBusy}
                   className="px-3 py-1.5 text-sm border border-border rounded-md hover:bg-secondary transition-colors disabled:opacity-50"
                 >
                   Plan
                 </button>
                 <button
-                  onClick={() => void runApply()}
-                  disabled={applyInfra.isPending}
+                  onClick={() => void startLifecycleRelease("apply")}
+                  disabled={releaseBusy}
                   className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 disabled:opacity-50"
                 >
                   Apply
                 </button>
-                <button
-                  onClick={() => void runDestroy()}
-                  disabled={destroyInfra.isPending}
-                  className="px-3 py-1.5 text-sm border border-destructive/40 text-destructive rounded-md hover:bg-destructive/10 disabled:opacity-50"
-                >
-                  Destroy
-                </button>
+                {isAdmin && (
+                  <button
+                    onClick={() => void startLifecycleRelease("destroy")}
+                    disabled={releaseBusy}
+                    className="px-3 py-1.5 text-sm border border-destructive/40 text-destructive rounded-md hover:bg-destructive/10 disabled:opacity-50"
+                  >
+                    Destroy
+                  </button>
+                )}
               </>
             )}
             {hasIssue && (
@@ -324,8 +352,17 @@ const InfrastructureDetailPage = () => {
         </div>
 
         {actionNote && (
-          <div className="rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
-            {actionNote}
+          <div className="rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span>{actionNote}</span>
+            {activeReleaseId && (
+              <button
+                type="button"
+                onClick={() => navigate("/releases")}
+                className="text-primary hover:underline"
+              >
+                Open Releases
+              </button>
+            )}
           </div>
         )}
 
