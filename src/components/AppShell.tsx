@@ -283,7 +283,7 @@ const AppShell = ({ children, activeTab = "overview", isAdmin: isAdminProp }: Ap
           <div className="flex-1" />
 
           <a
-            href="https://doc.greatplatform.org"
+            href="https://github.com/gridplatform/grid-docs"
             target="_blank"
             rel="noopener noreferrer"
             className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border bg-secondary text-muted-foreground text-sm hover:border-muted-foreground/50 hover:text-foreground transition-colors mr-2"
