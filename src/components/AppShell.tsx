@@ -72,7 +72,6 @@ const AppShell = ({ children, activeTab = "overview", isAdmin: isAdminProp }: Ap
     { id: "deployments", label: "Deployments", path: "/deployments", feature: "deployments" },
     { id: "releases", label: "Releases", path: "/releases", feature: "releases" },
     { id: "infrastructure", label: "Infrastructure", path: "/infrastructure", feature: "infrastructure" },
-    { id: "gitops", label: "GitOps", path: "/gitops" },
     { id: "monitoring", label: "Monitoring", path: "/monitoring", feature: "monitoring" },
     { id: "alerts", label: "Alerts", path: "/alerts", feature: "alerts" },
     { id: "apm", label: "APM", path: "/apm", feature: "apm" },

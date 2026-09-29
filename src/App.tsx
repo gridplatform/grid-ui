@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { Navigate, BrowserRouter, Routes, Route } from "react-router-dom";
 import { BrandingProvider } from "@/contexts/BrandingContext";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { WorkspaceProvider } from "@/contexts/WorkspaceContext";
@@ -14,7 +14,6 @@ import DeploymentsPage from "./pages/DeploymentsPage";
 import ReleasesPage from "./pages/ReleasesPage";
 import InfrastructurePage from "./pages/InfrastructurePage";
 import InfrastructureDetailPage from "./pages/InfrastructureDetailPage";
-import GitOpsPage from "./pages/GitOpsPage";
 import MonitoringPage from "./pages/MonitoringPage";
 import MonitoringDetailPage from "./pages/MonitoringDetailPage";
 import AlertsPage from "./pages/AlertsPage";
@@ -82,7 +81,7 @@ const App = () => (
                 </Auth>
               }
             />
-            <Route path="/gitops" element={<Auth><GitOpsPage /></Auth>} />
+            <Route path="/gitops" element={<Auth><Navigate to="/admin?tab=sources" replace /></Auth>} />
             <Route
               path="/monitoring"
               element={

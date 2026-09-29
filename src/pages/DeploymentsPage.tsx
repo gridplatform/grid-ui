@@ -355,7 +355,7 @@ const DeploymentsPage = () => {
                 No deployment runs in this environment yet.
               </p>
               <p className="text-xs text-muted-foreground max-w-md mx-auto">
-                Commit desired-state JSON to the config repo, sync GitOps, then create a{" "}
+                Commit desired-state JSON to the config repo, Sync on Infrastructure, then create a{" "}
                 <button
                   type="button"
                   onClick={() => navigate("/releases")}
