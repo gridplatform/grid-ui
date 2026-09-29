@@ -30,6 +30,7 @@ export type DeploymentStatus =
   | "cancelled";
 export type LifecycleMode = "plan" | "apply" | "destroy";
 export type ReleaseStatus = "queued" | "pending_approval" | "approved" | "deploying" | "success" | "failed" | "rolled_back";
+export type ReleaseMode = "plan" | "apply" | "custom";
 export type AlertSeverity = "critical" | "warning" | "info";
 export type AlertStatus = "firing" | "acknowledged" | "resolved";
 
@@ -64,7 +65,7 @@ export type VpcResourceType =
   | "cdn" | "cloudfront";
 
 export type VpcConnectionType = "peering" | "vpn" | "transit-gateway" | "internet";
-export type CloudProviderType = "AWS" | "GCP" | "Azure" | "On-Prem";
+export type CloudProviderType = string;
 
 /**
  * Resource within a VPC
@@ -128,11 +129,8 @@ export interface TopologyProvider {
 
 // ─── Infrastructure Types ───────────────────────────────────────────────────
 
-export type InfrastructureType = 
-  | "single-vm" | "vm-cluster" 
-  | "k8s-deployment" | "k8s-service" | "k8s-ingress" | "k8s-cronjob" | "k8s-statefulset" | "k8s-daemonset" | "k8s-storage"
-  | "managed-service" | "network" 
-  | "gpu-node" | "gpu-pool";
+/** Catalog resource type string (e.g. alb, vpc, access-analyzer). */
+export type InfrastructureType = string;
 
 /**
  * Infrastructure resource
@@ -147,6 +145,10 @@ export interface Infrastructure {
   configJson: Record<string, unknown>;
   gitRepo?: string;
   gitBranch?: string;
+  gitPath?: string;
+  gitCommit?: string;
+  gitContentHash?: string;
+  lastAppliedHash?: string;
   status: ResourceStatus;
   autoApprove: boolean;
   driftDetection: boolean;
@@ -168,6 +170,7 @@ export interface InfrastructureListItem {
   memory?: string;
   environment: string;
   provider: CloudProviderType;
+  project?: string;
   connections: string[];
   cluster?: string;
   config?: Record<string, unknown>;
@@ -206,6 +209,7 @@ export type ReleaseType = "terraform" | "kubernetes" | "custom";
 /**
  * Release record
  * GET /api/v1/releases → Release[]
+ * POST /api/v1/releases → Release
  */
 export interface Release {
   id: string;
@@ -213,14 +217,31 @@ export interface Release {
   type: ReleaseType;
   status: ReleaseStatus;
   environment: string;
+  mode: ReleaseMode;
+  infrastructureId?: string;
+  infrastructureName?: string;
+  customCommand?: string;
+  deploymentId?: string;
   version?: string;
   gitCommit?: string;
   gitBranch?: string;
+  logs?: string[];
+  message?: string;
   createdAt: string;
   deployedAt?: string;
+  completedAt?: string;
   approvedBy?: string;
   approvedAt?: string;
   rollbackFrom?: string;
+  createdBy?: string;
+}
+
+export interface CreateReleaseRequest {
+  name?: string;
+  environment: string;
+  mode: ReleaseMode;
+  infrastructureId?: string;
+  customCommand?: string;
 }
 
 /**
@@ -503,8 +524,26 @@ export interface Environment {
   expiresAt?: string;
   expired?: boolean;
   unitCount?: number;
+  /** Project slugs that include this env (from Core auto-detect) */
+  projects?: string[];
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * Project (app) — bifurcation of desired-state trees.
+ * GET /api/v1/projects → Project[]
+ */
+export interface Project {
+  id: string;
+  name: string;
+  slug: string;
+  avatar: string;
+  description?: string;
+  clouds: string[];
+  environments: string[];
+  unitCount: number;
+  kind: "multi-cloud" | "single-cloud";
 }
 
 // ─── User & Auth Types ──────────────────────────────────────────────────────

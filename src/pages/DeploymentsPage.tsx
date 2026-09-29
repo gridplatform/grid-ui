@@ -5,8 +5,6 @@ import {
   Cloud,
   Network,
   Database,
-  Plus,
-  X,
   ChevronRight,
   Loader2,
   CheckCircle2,
@@ -25,25 +23,22 @@ import {
   BarChart3,
   GitBranch,
   Activity,
+  Eye,
 } from "lucide-react";
 import {
   TERRAFORM_CATEGORIES,
   KUBERNETES_KINDS,
-  clusterDeployTemplate,
-  terraformDeployTemplate,
   type DeployEngine,
   type TerraformCategory,
   type TerraformTarget,
   type KubernetesWorkloadKind,
-  type GridDeployRequest,
 } from "@/lib/deployContract";
 import {
-  enabledClusterTargets,
   enabledTargetsForCategory,
   enabledTerraformCategories,
-  isDeployEnabled,
 } from "@/config/features";
-import { useCreateDeployment, useDeployments } from "@/hooks/useGridApi";
+import { useDeployments, useInfrastructures } from "@/hooks/useGridApi";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
 import type { Deployment as ApiDeployment } from "@/types/api";
 import { useNavigate } from "react-router-dom";
 import { DeploymentLiveLogs } from "@/components/DeploymentLiveLogs";
@@ -55,13 +50,11 @@ interface DeploymentRow {
   infrastructureId?: string;
   name: string;
   engine: DeployEngine;
-  category: string;
   provider: string;
   moduleOrKind: string;
   environment: string;
   status: DeploymentStatus;
   mode?: string;
-  createdBy: string;
   createdAt: string;
   details: string;
 }
@@ -98,24 +91,22 @@ const targetKey = (target: TerraformTarget) => `${target.provider}.${target.reso
 
 function mapApiDeployment(d: ApiDeployment): DeploymentRow {
   const status = (d.status === "cancelled" ? "failed" : d.status) as DeploymentStatus;
-  const relative = d.startedAt
-    ? new Date(d.startedAt).toLocaleString()
-    : "";
+  const mode = d.mode || undefined;
+  const moduleOrKind =
+    d.resourceType && d.resourceType !== mode ? d.resourceType : undefined;
   return {
     id: d.id,
     infrastructureId: d.infrastructureId,
     name: d.name || d.infrastructureId.slice(0, 8),
     engine: (d.engine as DeployEngine) || "terraform",
-    category: "other",
     provider: d.provider || "—",
-    moduleOrKind: d.resourceType || d.mode || "—",
+    moduleOrKind: moduleOrKind || "—",
     environment: d.environment || "—",
     status: status in statusConfig ? status : "pending",
-    mode: d.mode,
-    createdBy: d.triggeredBy,
-    createdAt: relative,
+    mode,
+    createdAt: d.startedAt ? new Date(d.startedAt).toLocaleString() : "",
     details: [
-      d.mode ? `mode=${d.mode}` : null,
+      mode ? `mode=${mode}` : null,
       d.progress != null ? `${d.progress}%` : null,
       d.infrastructureId ? `infra ${d.infrastructureId.slice(0, 8)}` : null,
     ]
@@ -124,8 +115,23 @@ function mapApiDeployment(d: ApiDeployment): DeploymentRow {
   };
 }
 
+/** Infer catalog category from resource type / module name heuristics. */
+function guessCategory(resourceType?: string): TerraformCategory | null {
+  if (!resourceType) return null;
+  const t = resourceType.toLowerCase();
+  if (/ec2|instance|asg|autoscaling|compute-engine|gpu|vm/.test(t)) return "compute";
+  if (/vpc|subnet|network|nat|gateway|route/.test(t)) return "network";
+  if (/eks|gke|aks|kubernetes|cluster/.test(t)) return "kubernetes-cluster";
+  if (/rds|sql|postgres|mysql|dynamo|spanner|firestore/.test(t)) return "database";
+  if (/s3|gcs|bucket|ebs|disk|storage/.test(t)) return "storage";
+  if (/sagemaker|vertex|notebook|ml/.test(t)) return "ai-ml";
+  return "other";
+}
+
 const DeploymentsPage = () => {
   const navigate = useNavigate();
+  const { envSlug, selectedProject, selectedEnv } = useWorkspace();
+
   const visibleCategories = useMemo(() => {
     const enabled = new Set(enabledTerraformCategories());
     return TERRAFORM_CATEGORIES.filter((c) => enabled.has(c.id));
@@ -135,116 +141,97 @@ const DeploymentsPage = () => {
   const [engine, setEngine] = useState<DeployEngine>("terraform");
   const [tfCategory, setTfCategory] = useState<TerraformCategory>(defaultCategory);
   const [k8sKind, setK8sKind] = useState<KubernetesWorkloadKind>("workload");
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [createJson, setCreateJson] = useState("");
-  const [submitNote, setSubmitNote] = useState<string | null>(null);
-  const [submitMode, setSubmitMode] = useState<"plan" | "apply">("apply");
+  const [selectedTarget, setSelectedTarget] = useState<string | null>(null);
   const [watchingId, setWatchingId] = useState<string | null>(null);
 
-  const createDeployment = useCreateDeployment();
   const { data: liveDeployments, isLoading: liveLoading, error: liveError } = useDeployments();
+  const { data: infrastructures = [] } = useInfrastructures();
 
-  // Only provider x resource type pairs that are switched on can be picked.
   const categoryTargets = useMemo(() => enabledTargetsForCategory(tfCategory), [tfCategory]);
-  const clusterTargets = useMemo(() => enabledClusterTargets(), []);
-  const [selectedTarget, setSelectedTarget] = useState<string | null>(null);
   const activeTarget =
     categoryTargets.find((t) => targetKey(t) === selectedTarget) ?? categoryTargets[0] ?? null;
 
-  const liveRows = useMemo(
-    () => (liveDeployments || []).map(mapApiDeployment).reverse(),
-    [liveDeployments]
-  );
+  const infraById = useMemo(() => {
+    const m = new Map(infrastructures.map((i) => [i.id, i]));
+    return m;
+  }, [infrastructures]);
 
-  const filtered = liveRows.filter((d) => d.engine === engine);
+  const scopedDeployments = useMemo(() => {
+    const projectSlug = selectedProject?.slug;
+    return (liveDeployments || [])
+      .map(mapApiDeployment)
+      .filter((d) => {
+        // Environment scope from header
+        if (envSlug && d.environment !== envSlug && d.environment !== "—") {
+          // Also accept via linked infra
+          const infra = d.infrastructureId ? infraById.get(d.infrastructureId) : undefined;
+          if (!infra || infra.environment !== envSlug) return false;
+        }
+        if (projectSlug && d.infrastructureId) {
+          const infra = infraById.get(d.infrastructureId);
+          const p = infra?.project || "demo-app";
+          if (infra && p !== projectSlug) return false;
+        }
+        return true;
+      })
+      .reverse();
+  }, [liveDeployments, envSlug, selectedProject?.slug, infraById]);
 
-  const openCreate = (target?: TerraformTarget) => {
-    setSubmitNote(null);
-    if (engine === "kubernetes") {
-      setCreateJson(k8sTemplates[k8sKind]);
-      setShowCreateModal(true);
-      return;
-    }
-
-    const picked = target ?? activeTarget;
-    if (!picked) {
-      setSubmitNote("No resource types are enabled for this category. Enable one in src/config/featureFlags.ts.");
-      return;
-    }
-    setSelectedTarget(targetKey(picked));
-
-    if (tfCategory === "kubernetes-cluster") {
-      const cluster = clusterTargets.find((t) => t.resourceType === picked.resourceType);
-      setCreateJson(
-        cluster ? clusterDeployTemplate(cluster.id) : terraformDeployTemplate(tfCategory, picked),
-      );
-    } else {
-      setCreateJson(terraformDeployTemplate(tfCategory, picked));
-    }
-    setShowCreateModal(true);
-  };
-
-  const handleDeploy = async (mode: "plan" | "apply") => {
-    try {
-      const parsed = JSON.parse(createJson) as GridDeployRequest;
-      if (!parsed.engine || !parsed.name || !parsed.resourceType) {
-        setSubmitNote("JSON must include name, engine, and resourceType.");
-        return;
+  const filtered = useMemo(() => {
+    return scopedDeployments.filter((d) => {
+      if (d.engine !== engine) return false;
+      if (engine === "terraform") {
+        const cat = guessCategory(d.moduleOrKind !== "—" ? d.moduleOrKind : d.mode);
+        // If we can't guess, still show under current category when browsing "other" or show all in category loosely
+        if (cat && cat !== tfCategory && tfCategory !== "other") {
+          // Prefer showing when module matches selected target resource type
+          if (activeTarget && d.moduleOrKind === activeTarget.resourceType) return true;
+          return false;
+        }
+        if (selectedTarget && activeTarget) {
+          // Soft filter: if a catalog card is selected, prefer matching resourceType
+          if (d.moduleOrKind === activeTarget.resourceType) return true;
+          // Keep broader category matches when no exact module
+          if (d.moduleOrKind === "—" || d.moduleOrKind === d.mode) return cat === tfCategory || !cat;
+          return false;
+        }
       }
-      if (parsed.engine === "terraform" && !isDeployEnabled(parsed.provider, parsed.resourceType)) {
-        setSubmitNote(
-          `Deploys are off for ${parsed.provider ?? "aws"}.${parsed.resourceType}. Enable it in src/config/featureFlags.ts.`,
-        );
-        return;
-      }
-      if (parsed.engine === "kubernetes") {
-        setSubmitNote("Kubernetes apply is not implemented yet (API returns 501). Use terraform for infrastructure.");
-        return;
-      }
+      return true;
+    });
+  }, [scopedDeployments, engine, tfCategory, selectedTarget, activeTarget]);
 
-      setSubmitMode(mode);
-      const result = await createDeployment.mutateAsync({ ...parsed, mode });
-      setWatchingId(result.id);
-      setSubmitNote(
-        `${mode === "plan" ? "Plan" : "Apply"} started: ${result.id} · infra ${result.infrastructureId.slice(0, 8)}…`,
-      );
-      setShowCreateModal(false);
-    } catch (err) {
-      setSubmitNote(err instanceof Error ? err.message : "Deploy request failed.");
+  // Catalog counts for the selected category (read-only)
+  const catalogCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const d of scopedDeployments.filter((x) => x.engine === "terraform")) {
+      const key = d.moduleOrKind !== "—" && d.moduleOrKind !== d.mode ? d.moduleOrKind : "";
+      if (!key) continue;
+      counts.set(key, (counts.get(key) || 0) + 1);
     }
-  };
+    return counts;
+  }, [scopedDeployments]);
 
   return (
     <AppShell activeTab="deployments">
-      <div className="p-6 space-y-6">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div>
-            <h1 className="text-lg font-semibold text-foreground">Deployments</h1>
+      <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 max-w-6xl mx-auto w-full">
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-lg font-semibold text-foreground flex items-center gap-2">
+              Deployments
+              <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-secondary text-muted-foreground font-medium">
+                <Eye className="w-3 h-3" />
+                View only
+              </span>
+            </h1>
             <p className="text-xs text-muted-foreground mt-1">
-              Desired-state JSON → plan (preview) → apply (converge) → destroy.
+              Catalog of what is deployed for{" "}
+              <strong className="text-foreground">{selectedProject?.name || "project"}</strong>
+              {" / "}
+              <strong className="text-foreground">{selectedEnv?.name || envSlug || "env"}</strong>.
+              Change desired state in Git, then use Releases to plan/apply.
             </p>
           </div>
-          <button
-            onClick={() => openCreate()}
-            className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity flex items-center gap-1.5"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            New Deployment
-          </button>
         </div>
-
-        {submitNote && (
-          <div className="rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
-            {submitNote}
-          </div>
-        )}
-
-        {watchingId && (
-          <DeploymentLiveLogs
-            deploymentId={watchingId}
-            title="Live CLI / Terraform output"
-          />
-        )}
 
         {liveError && (
           <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
@@ -252,7 +239,6 @@ const DeploymentsPage = () => {
           </div>
         )}
 
-        {/* Engine */}
         <div className="flex items-center gap-1 p-1 bg-card border border-border rounded-lg w-fit">
           <button
             onClick={() => setEngine("terraform")}
@@ -278,7 +264,6 @@ const DeploymentsPage = () => {
           </button>
         </div>
 
-        {/* Category / kind tabs */}
         <div className="flex items-center gap-1 p-1 bg-card border border-border rounded-lg w-fit flex-wrap">
           {engine === "terraform"
             ? visibleCategories.map((cat) => {
@@ -324,40 +309,62 @@ const DeploymentsPage = () => {
 
         {engine === "terraform" && (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-            {categoryTargets.map((target) => (
-              <button
-                key={targetKey(target)}
-                onClick={() => openCreate(target)}
-                className={`text-left rounded-lg border px-3 py-3 transition-colors hover:bg-secondary/60 ${
-                  activeTarget && targetKey(activeTarget) === targetKey(target)
-                    ? "border-primary/40 bg-secondary/40"
-                    : "border-border bg-card"
-                }`}
-              >
-                <div className="text-sm font-medium text-foreground">{target.label}</div>
-                <div className="text-[10px] text-muted-foreground font-mono mt-1">
-                  {target.provider}.{target.resourceType}
-                </div>
-              </button>
-            ))}
+            {categoryTargets.map((target) => {
+              const key = targetKey(target);
+              const count = catalogCounts.get(target.resourceType) || 0;
+              const selected = activeTarget && targetKey(activeTarget) === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setSelectedTarget(selected ? null : key)}
+                  className={`text-left rounded-lg border px-3 py-3 transition-colors ${
+                    selected
+                      ? "border-primary/40 bg-secondary/40"
+                      : "border-border bg-card hover:bg-secondary/40"
+                  }`}
+                >
+                  <div className="text-sm font-medium text-foreground">{target.label}</div>
+                  <div className="text-[10px] text-muted-foreground font-mono mt-1">
+                    {target.provider}.{target.resourceType}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground mt-1.5">
+                    {count} run{count === 1 ? "" : "s"} in this env
+                  </div>
+                </button>
+              );
+            })}
           </div>
         )}
 
         <div className="rounded-lg border border-border bg-card overflow-hidden">
-          <div className="p-4 border-b border-border flex items-center justify-between">
+          <div className="p-4 border-b border-border flex items-center justify-between gap-2">
             <h2 className="text-sm font-medium text-foreground">
               {engine === "terraform"
                 ? TERRAFORM_CATEGORIES.find((c) => c.id === tfCategory)?.label
                 : KUBERNETES_KINDS.find((k) => k.id === k8sKind)?.label}
             </h2>
             <span className="text-xs text-muted-foreground">
-              {liveLoading ? "loading…" : `${filtered.length} deployments`}
+              {liveLoading ? "loading…" : `${filtered.length} runs`}
             </span>
           </div>
 
           {filtered.length === 0 ? (
-            <div className="p-8 text-center text-sm text-muted-foreground">
-              {"No deployments yet. Plan or apply to create infrastructure from JSON."}
+            <div className="p-8 text-center space-y-2">
+              <p className="text-sm text-muted-foreground">
+                No deployment runs in this environment yet.
+              </p>
+              <p className="text-xs text-muted-foreground max-w-md mx-auto">
+                Commit desired-state JSON to the config repo, sync GitOps, then create a{" "}
+                <button
+                  type="button"
+                  onClick={() => navigate("/releases")}
+                  className="text-foreground underline underline-offset-2 hover:text-primary"
+                >
+                  Release
+                </button>{" "}
+                (plan or apply). This page is read-only.
+              </p>
             </div>
           ) : (
             <div className="divide-y divide-border">
@@ -368,11 +375,12 @@ const DeploymentsPage = () => {
                   <div
                     key={dep.id}
                     onClick={() => {
+                      setWatchingId(dep.id);
                       if (dep.infrastructureId) {
                         navigate(`/infrastructure/${dep.infrastructureId}`);
                       }
                     }}
-                    className="flex items-center px-4 py-3 hover:bg-secondary/50 cursor-pointer transition-colors"
+                    className="flex flex-col sm:flex-row sm:items-center px-4 py-3 gap-2 hover:bg-secondary/50 cursor-pointer transition-colors"
                   >
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <StatusIcon
@@ -391,18 +399,23 @@ const DeploymentsPage = () => {
                               {dep.mode}
                             </span>
                           )}
-                          <span className="text-xs text-muted-foreground font-mono">{dep.moduleOrKind}</span>
+                          {dep.moduleOrKind && dep.moduleOrKind !== "—" && (
+                            <span className="text-xs text-muted-foreground font-mono">
+                              {dep.moduleOrKind}
+                            </span>
+                          )}
                         </div>
                         <p className="text-xs text-muted-foreground">{dep.details}</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-4 flex-shrink-0">
+                    <div className="flex items-center gap-3 sm:gap-4 flex-shrink-0 pl-7 sm:pl-0">
                       <span className="text-xs text-muted-foreground font-mono">{dep.provider}</span>
-                      <span className="text-xs text-muted-foreground">{dep.environment}</span>
                       <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${sc.color}`}>
                         {sc.label}
                       </span>
-                      <span className="text-xs text-muted-foreground w-16 text-right">{dep.createdAt}</span>
+                      <span className="text-xs text-muted-foreground hidden sm:inline">
+                        {dep.createdAt}
+                      </span>
                       <ChevronRight className="w-4 h-4 text-muted-foreground" />
                     </div>
                   </div>
@@ -411,67 +424,11 @@ const DeploymentsPage = () => {
             </div>
           )}
         </div>
-      </div>
 
-      {showCreateModal && (
-        <>
-          <div
-            className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm"
-            onClick={() => setShowCreateModal(false)}
-          />
-          <div className="fixed top-[50%] left-[50%] -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-lg bg-card border border-border rounded-lg shadow-2xl">
-            <div className="p-4 border-b border-border flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-foreground">
-                New {engine === "terraform" ? "infrastructure" : "workload"} deployment
-              </h2>
-              <button
-                onClick={() => setShowCreateModal(false)}
-                className="p-1 text-muted-foreground hover:text-foreground rounded"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="p-4 space-y-4">
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Configuration (JSON)</label>
-                <textarea
-                  value={createJson}
-                  onChange={(e) => setCreateJson(e.target.value)}
-                  className="w-full h-[320px] bg-background border border-border rounded-md p-3 text-sm font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none"
-                  spellCheck={false}
-                />
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {engine === "terraform"
-                  ? "Plan previews create/change/destroy. Apply converges desired state to the cloud."
-                  : "Kubernetes apply is not implemented yet."}
-              </p>
-            </div>
-            <div className="p-4 border-t border-border flex justify-end gap-2">
-              <button
-                onClick={() => setShowCreateModal(false)}
-                className="px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground border border-border rounded-md hover:bg-secondary transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => void handleDeploy("plan")}
-                disabled={createDeployment.isPending}
-                className="px-3 py-1.5 text-sm border border-border text-foreground rounded-md hover:bg-secondary transition-colors disabled:opacity-50"
-              >
-                Plan
-              </button>
-              <button
-                onClick={() => void handleDeploy("apply")}
-                disabled={createDeployment.isPending}
-                className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity disabled:opacity-50"
-              >
-                {createDeployment.isPending && submitMode === "apply" ? "Applying…" : "Apply"}
-              </button>
-            </div>
-          </div>
-        </>
-      )}
+        {watchingId && (
+          <DeploymentLiveLogs deploymentId={watchingId} title="Run output (read-only)" />
+        )}
+      </div>
     </AppShell>
   );
 };

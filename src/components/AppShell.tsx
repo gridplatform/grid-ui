@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { ShieldCheck, BookOpen } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Search, ChevronDown, LogOut, Settings, User } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 import { useBranding } from "@/contexts/BrandingContext";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { productFlags, type FeatureKey } from "@/config/features";
 import { GridLogo } from "@/components/GridLogo";
-import { useEnvironments } from "@/hooks/useGridApi";
+import { useGridSearch } from "@/hooks/useGridApi";
 import type { Environment } from "@/types/api";
 
 interface AppShellProps {
@@ -13,12 +15,6 @@ interface AppShellProps {
   activeTab?: string;
   isAdmin?: boolean;
 }
-
-const teams = [
-  { id: "personal", name: "My Projects", avatar: "M" },
-  { id: "infra", name: "Infrastructure Team", avatar: "I" },
-  { id: "platform", name: "Platform Eng", avatar: "P" },
-];
 
 function formatEnvSubtitle(env: Environment): string {
   if (env.kind === "ephemeral") {
@@ -44,31 +40,31 @@ type NavTab = {
   feature?: FeatureKey;
 };
 
-const AppShell = ({ children, activeTab = "overview", isAdmin = true }: AppShellProps) => {
+const AppShell = ({ children, activeTab = "overview", isAdmin: isAdminProp }: AppShellProps) => {
   const { customLogoUrl, orgName } = useBranding();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const { data: environments = [], isLoading: envsLoading } = useEnvironments();
+  const isAdmin = isAdminProp ?? user?.role === "admin";
+  const {
+    projects,
+    projectEnvironments,
+    selectedProject,
+    selectedEnv,
+    projectsLoading,
+    envsLoading,
+    setSelectedProjectId,
+    setSelectedEnvId,
+  } = useWorkspace();
+
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [selectedTeam, setSelectedTeam] = useState(teams[0]);
-  const [selectedEnvId, setSelectedEnvId] = useState<string | null>(null);
   const [teamSearch, setTeamSearch] = useState("");
   const [projectSearch, setProjectSearch] = useState("");
 
-  useEffect(() => {
-    if (!environments.length) {
-      setSelectedEnvId(null);
-      return;
-    }
-    if (!selectedEnvId || !environments.some((e) => e.id === selectedEnvId)) {
-      setSelectedEnvId(environments[0].id);
-    }
-  }, [environments, selectedEnvId]);
-
-  const selectedEnv = useMemo(
-    () => environments.find((e) => e.id === selectedEnvId) ?? environments[0] ?? null,
-    [environments, selectedEnvId]
+  const { data: searchResults, isFetching: searchLoading } = useGridSearch(
+    searchOpen ? searchQuery : ""
   );
 
   const allTabs: NavTab[] = [
@@ -87,10 +83,11 @@ const AppShell = ({ children, activeTab = "overview", isAdmin = true }: AppShell
   const tabs = allTabs.filter((tab) => !tab.feature || productFlags[tab.feature]);
   const showAdmin = isAdmin && productFlags.admin;
 
-  const filteredTeams = teams.filter((t) =>
-    t.name.toLowerCase().includes(teamSearch.toLowerCase())
+  const filteredProjects = projects.filter((p) =>
+    p.name.toLowerCase().includes(teamSearch.toLowerCase()) ||
+    p.slug.toLowerCase().includes(teamSearch.toLowerCase())
   );
-  const filteredEnvs = environments.filter((e) => {
+  const filteredEnvs = projectEnvironments.filter((e) => {
     const q = projectSearch.toLowerCase();
     if (!q) return true;
     return (
@@ -104,95 +101,118 @@ const AppShell = ({ children, activeTab = "overview", isAdmin = true }: AppShell
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-50 border-b border-border bg-background">
         <div className="flex items-center h-14 px-4">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             <button
               onClick={() => navigate("/dashboard")}
-              className="flex items-center gap-2 text-foreground font-semibold text-sm hover:opacity-80 transition-opacity"
+              className="flex items-center gap-2 text-foreground font-semibold text-sm hover:opacity-80 transition-opacity flex-shrink-0"
             >
               {customLogoUrl ? (
                 <img src={customLogoUrl} alt={orgName} className="w-6 h-6 rounded object-contain" />
               ) : (
                 <GridLogo className="w-6 h-6" alt={orgName} />
               )}
-              <span>{orgName}</span>
+              <span className="hidden sm:inline">{orgName}</span>
             </button>
 
             <span className="text-muted-foreground text-sm">/</span>
 
-            <div className="relative">
+            <div className="relative min-w-0">
               <button
                 onClick={() => {
                   setDropdownOpen(!dropdownOpen);
                   setUserMenuOpen(false);
                 }}
-                className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-secondary transition-colors text-sm"
+                className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-secondary transition-colors text-sm min-w-0"
               >
-                <div className="w-5 h-5 rounded bg-secondary flex items-center justify-center text-xs text-foreground font-medium">
-                  {selectedTeam.avatar}
+                <div className="w-5 h-5 rounded bg-secondary flex items-center justify-center text-xs text-foreground font-medium flex-shrink-0">
+                  {selectedProject?.avatar || "?"}
                 </div>
-                <span className="text-foreground">{selectedTeam.name}</span>
+                <span className="text-foreground truncate max-w-[100px] sm:max-w-[160px]">
+                  {selectedProject?.name || (projectsLoading ? "…" : "No project")}
+                </span>
                 <span className="text-muted-foreground">/</span>
-                <span className="text-foreground">
+                <span className="text-foreground truncate max-w-[90px] sm:max-w-[140px]">
                   {selectedEnv ? formatEnvLabel(selectedEnv) : envsLoading ? "…" : "No env"}
                 </span>
-                <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+                <ChevronDown className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
               </button>
 
               {dropdownOpen && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setDropdownOpen(false)} />
-                  <div className="absolute top-full left-0 mt-2 z-50 w-[560px] bg-popover border border-border rounded-lg shadow-2xl overflow-hidden animate-fade-in">
-                    <div className="flex divide-x divide-border">
-                      <div className="w-1/2 p-2">
+                  <div className="absolute top-full left-0 mt-2 z-50 w-[min(560px,calc(100vw-2rem))] bg-popover border border-border rounded-lg shadow-2xl overflow-hidden animate-fade-in">
+                    <div className="flex flex-col sm:flex-row sm:divide-x divide-border">
+                      <div className="sm:w-1/2 p-2 border-b sm:border-b-0 border-border">
                         <div className="px-2 pb-2">
+                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1.5 px-0.5">
+                            Projects
+                          </p>
                           <div className="relative">
                             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                             <input
                               type="text"
-                              placeholder="Find Team…"
+                              placeholder="Find project…"
                               value={teamSearch}
                               onChange={(e) => setTeamSearch(e.target.value)}
                               className="w-full bg-secondary text-foreground text-sm pl-8 pr-3 py-1.5 rounded-md border border-border focus:outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground"
                             />
                           </div>
                         </div>
-                        <div className="space-y-0.5">
-                          {filteredTeams.map((team) => (
+                        <div className="space-y-0.5 max-h-48 overflow-y-auto">
+                          {projectsLoading && (
+                            <p className="px-2 py-1.5 text-xs text-muted-foreground">Loading…</p>
+                          )}
+                          {!projectsLoading && filteredProjects.length === 0 && (
+                            <p className="px-2 py-1.5 text-xs text-muted-foreground">
+                              No projects from config root.
+                            </p>
+                          )}
+                          {filteredProjects.map((project) => (
                             <button
-                              key={team.id}
-                              onClick={() => {
-                                setSelectedTeam(team);
-                              }}
+                              key={project.id}
+                              onClick={() => setSelectedProjectId(project.id)}
                               className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors ${
-                                selectedTeam.id === team.id
+                                selectedProject?.id === project.id
                                   ? "bg-secondary text-foreground"
                                   : "text-muted-foreground hover:bg-secondary hover:text-foreground"
                               }`}
                             >
-                              <div className="w-5 h-5 rounded bg-accent flex items-center justify-center text-xs font-medium">
-                                {team.avatar}
+                              <div className="w-5 h-5 rounded bg-accent flex items-center justify-center text-xs font-medium flex-shrink-0">
+                                {project.avatar}
                               </div>
-                              <span>{team.name}</span>
-                              {selectedTeam.id === team.id && (
-                                <span className="ml-auto text-primary">✓</span>
+                              <div className="min-w-0 text-left flex-1">
+                                <span className="block truncate">{project.name}</span>
+                                <span className="block text-[10px] text-muted-foreground truncate">
+                                  {project.kind === "multi-cloud"
+                                    ? project.clouds.join(" · ")
+                                    : project.clouds[0] || "—"}
+                                  {` · ${project.unitCount} units`}
+                                </span>
+                              </div>
+                              {selectedProject?.id === project.id && (
+                                <span className="text-primary flex-shrink-0">✓</span>
                               )}
                             </button>
                           ))}
                         </div>
-                        <div className="mt-2 pt-2 border-t border-border">
-                          <button className="w-full text-left px-2 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md transition-colors">
-                            + Create Team
-                          </button>
+                        <div className="mt-2 pt-2 border-t border-border px-2">
+                          <p className="text-[10px] text-muted-foreground leading-relaxed">
+                            Add apps under <code className="font-mono">projects/&lt;slug&gt;/</code> in
+                            the config repo. Changes land via Git sync — not from this UI.
+                          </p>
                         </div>
                       </div>
 
-                      <div className="w-1/2 p-2">
+                      <div className="sm:w-1/2 p-2">
                         <div className="px-2 pb-2">
+                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1.5 px-0.5">
+                            Environments
+                          </p>
                           <div className="relative">
                             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                             <input
                               type="text"
-                              placeholder="Find Environment…"
+                              placeholder="Find environment…"
                               value={projectSearch}
                               onChange={(e) => setProjectSearch(e.target.value)}
                               className="w-full bg-secondary text-foreground text-sm pl-8 pr-3 py-1.5 rounded-md border border-border focus:outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground"
@@ -257,7 +277,7 @@ const AppShell = ({ children, activeTab = "overview", isAdmin = true }: AppShell
             href="https://doc.greatplatform.org"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border bg-secondary text-muted-foreground text-sm hover:border-muted-foreground/50 hover:text-foreground transition-colors mr-2"
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border bg-secondary text-muted-foreground text-sm hover:border-muted-foreground/50 hover:text-foreground transition-colors mr-2"
           >
             <BookOpen className="w-3.5 h-3.5" />
             <span>Docs</span>
@@ -268,8 +288,8 @@ const AppShell = ({ children, activeTab = "overview", isAdmin = true }: AppShell
             className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-border bg-secondary text-muted-foreground text-sm hover:border-muted-foreground/50 transition-colors mr-3"
           >
             <Search className="w-3.5 h-3.5" />
-            <span>Find…</span>
-            <kbd className="ml-4 text-xs border border-border rounded px-1.5 py-0.5 text-muted-foreground">
+            <span className="hidden sm:inline">Find…</span>
+            <kbd className="hidden sm:inline ml-4 text-xs border border-border rounded px-1.5 py-0.5 text-muted-foreground">
               ⌘K
             </kbd>
           </button>
@@ -311,7 +331,7 @@ const AppShell = ({ children, activeTab = "overview", isAdmin = true }: AppShell
                     </button>
                     <button
                       onClick={() => {
-                        navigate("/");
+                        void logout().then(() => navigate("/"));
                         setUserMenuOpen(false);
                       }}
                       className="w-full flex items-center gap-2 px-2 py-1.5 text-sm text-destructive hover:bg-secondary rounded-md transition-colors"
@@ -326,12 +346,12 @@ const AppShell = ({ children, activeTab = "overview", isAdmin = true }: AppShell
           </div>
         </div>
 
-        <div className="flex items-center gap-0 px-4 -mb-px">
+        <div className="flex items-center gap-0 px-4 -mb-px overflow-x-auto">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => navigate(tab.path)}
-              className={`px-3 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              className={`px-3 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 activeTab === tab.id
                   ? "border-foreground text-foreground"
                   : "border-transparent text-muted-foreground hover:text-foreground"
@@ -347,21 +367,113 @@ const AppShell = ({ children, activeTab = "overview", isAdmin = true }: AppShell
         <>
           <div
             className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm"
-            onClick={() => setSearchOpen(false)}
+            onClick={() => {
+              setSearchOpen(false);
+              setSearchQuery("");
+            }}
           />
-          <div className="fixed top-[20%] left-1/2 -translate-x-1/2 z-50 w-full max-w-lg animate-fade-in">
+          <div className="fixed top-[20%] left-1/2 -translate-x-1/2 z-50 w-full max-w-lg animate-fade-in px-4">
             <div className="bg-popover border border-border rounded-lg shadow-2xl overflow-hidden">
               <div className="flex items-center px-4 border-b border-border">
                 <Search className="w-4 h-4 text-muted-foreground mr-3" />
                 <input
                   type="text"
-                  placeholder="Search resources, environments, users…"
+                  placeholder="Search projects, environments, infrastructure…"
                   autoFocus
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full bg-transparent text-foreground text-sm py-3 focus:outline-none placeholder:text-muted-foreground"
                 />
               </div>
-              <div className="p-4 text-center text-sm text-muted-foreground">
-                Start typing to search…
+              <div className="max-h-80 overflow-y-auto">
+                {searchQuery.trim().length < 2 ? (
+                  <div className="p-4 text-center text-sm text-muted-foreground">
+                    Type at least 2 characters — results from grid-core.
+                  </div>
+                ) : searchLoading && !searchResults ? (
+                  <div className="p-4 text-center text-sm text-muted-foreground">Searching…</div>
+                ) : (
+                  <div className="p-2 space-y-3">
+                    {(searchResults?.projects || []).length > 0 && (
+                      <div>
+                        <p className="px-2 text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
+                          Projects
+                        </p>
+                        {searchResults!.projects.map((p) => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedProjectId(p.id);
+                              setSearchOpen(false);
+                              setSearchQuery("");
+                            }}
+                            className="w-full text-left px-2 py-1.5 rounded-md text-sm hover:bg-secondary"
+                          >
+                            {p.name}
+                            <span className="text-xs text-muted-foreground ml-2">
+                              {p.clouds.join(", ")}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {(searchResults?.environments || []).length > 0 && (
+                      <div>
+                        <p className="px-2 text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
+                          Environments
+                        </p>
+                        {searchResults!.environments.map((e) => (
+                          <button
+                            key={e.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedEnvId(e.id);
+                              setSearchOpen(false);
+                              setSearchQuery("");
+                            }}
+                            className="w-full text-left px-2 py-1.5 rounded-md text-sm hover:bg-secondary"
+                          >
+                            {e.name}
+                            <span className="text-xs text-muted-foreground ml-2">{e.slug}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {(searchResults?.infrastructures || []).length > 0 && (
+                      <div>
+                        <p className="px-2 text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
+                          Infrastructure
+                        </p>
+                        {searchResults!.infrastructures.map((i) => (
+                          <button
+                            key={i.id}
+                            type="button"
+                            onClick={() => {
+                              navigate(`/infrastructure/${i.id}`);
+                              setSearchOpen(false);
+                              setSearchQuery("");
+                            }}
+                            className="w-full text-left px-2 py-1.5 rounded-md text-sm hover:bg-secondary"
+                          >
+                            {i.name}
+                            <span className="text-xs text-muted-foreground ml-2">
+                              {i.project} · {i.environment} · {i.provider}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {searchResults &&
+                      !searchResults.projects.length &&
+                      !searchResults.environments.length &&
+                      !searchResults.infrastructures.length && (
+                        <div className="p-4 text-center text-sm text-muted-foreground">
+                          No matches.
+                        </div>
+                      )}
+                  </div>
+                )}
               </div>
             </div>
           </div>

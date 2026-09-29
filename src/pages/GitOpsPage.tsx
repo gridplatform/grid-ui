@@ -18,7 +18,7 @@ const GitOpsPage = () => {
 
   const [repoUrl, setRepoUrl] = useState("");
   const [branch, setBranch] = useState("main");
-  const [pathPrefix, setPathPrefix] = useState("infrastructures");
+  const [pathPrefix, setPathPrefix] = useState("");
   const [syncIntervalSec, setSyncIntervalSec] = useState(0);
   const [enabled, setEnabled] = useState(true);
   const [hydrated, setHydrated] = useState(false);
@@ -29,7 +29,7 @@ const GitOpsPage = () => {
     if (hydrated || !status?.settings) return;
     setRepoUrl(status.settings.repoUrl || "");
     setBranch(status.settings.branch || "main");
-    setPathPrefix(status.settings.pathPrefix || "infrastructures");
+    setPathPrefix(status.settings.pathPrefix || "");
     setSyncIntervalSec(status.settings.syncIntervalSec || 0);
     setEnabled(status.settings.enabled !== false);
     setHydrated(true);
@@ -82,9 +82,10 @@ const GitOpsPage = () => {
             GitOps desired state
           </h1>
           <p className="text-xs text-muted-foreground mt-1">
-            Point Grid at the Git repo where you commit{" "}
-            <code className="font-mono">infrastructures/*/grid.json</code>. Sync pulls JSON; drift
-            compares that desired state to Terraform state / live.
+            Point Grid at the Git repo where you commit desired-state JSON under{" "}
+            <code className="font-mono">projects/&lt;app&gt;/&lt;cloud&gt;/&lt;env&gt;/…</code>
+            . Sync pulls that tree into <code className="font-mono">GRID_CONFIG_ROOT</code>; drift
+            compares desired state to Terraform state / live.
           </p>
         </div>
 
@@ -101,7 +102,7 @@ const GitOpsPage = () => {
             <input
               value={repoUrl}
               onChange={(e) => setRepoUrl(e.target.value)}
-              placeholder="https://github.com/you/grid-desired-state.git"
+              placeholder="https://github.com/gridplatform/grid-config.git"
               className="mt-1 w-full px-3 py-2 rounded-md bg-secondary border border-border text-sm text-foreground"
             />
           </label>
