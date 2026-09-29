@@ -22,6 +22,7 @@ import {
   useRestoreInfrastructureConfig,
 } from "@/hooks/useGridApi";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
+import { InfrastructureConfigSyncPanel } from "@/components/InfrastructureConfigSyncPanel";
 import type { InfrastructureListItem } from "@/types/api";
 import {
   TERRAFORM_CATEGORIES,
@@ -386,6 +387,8 @@ const InfrastructurePage = () => {
             </div>
           </div>
         </div>
+
+        <InfrastructureConfigSyncPanel />
 
         {error && (
           <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">

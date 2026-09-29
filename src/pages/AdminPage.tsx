@@ -1,32 +1,51 @@
-import { useState } from "react";
+import { useEffect, useState, type ElementType } from "react";
+import { useSearchParams } from "react-router-dom";
 import AppShell from "@/components/AppShell";
-import { ShieldCheck, Users, KeyRound, ScrollText } from "lucide-react";
+import { AdminSourcesPanel } from "@/components/AdminSourcesPanel";
+import { ShieldCheck, Users, KeyRound, ScrollText, FolderGit2 } from "lucide-react";
 import { useCurrentUser, useEnvironments } from "@/hooks/useGridApi";
 
-type AdminTab = "users" | "keys" | "audit" | "environments";
+type AdminTab = "users" | "keys" | "audit" | "environments" | "sources";
 
 const AdminPage = () => {
-  const [tab, setTab] = useState<AdminTab>("users");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initial = (searchParams.get("tab") as AdminTab) || "users";
+  const [tab, setTab] = useState<AdminTab>(
+    ["users", "keys", "audit", "environments", "sources"].includes(initial)
+      ? initial
+      : "users"
+  );
   const { data: me, isLoading: meLoading } = useCurrentUser();
   const { data: environments = [], isLoading: envsLoading } = useEnvironments();
 
-  // Admin sub-resources (users, API keys, audit) have no live list endpoints yet —
-  // keep empty arrays so the UI never invents fixture rows.
+  useEffect(() => {
+    const t = searchParams.get("tab") as AdminTab | null;
+    if (t && ["users", "keys", "audit", "environments", "sources"].includes(t)) {
+      setTab(t);
+    }
+  }, [searchParams]);
+
   const users: never[] = [];
   const apiKeys: never[] = [];
   const auditLog: never[] = [];
 
-  const tabs: { id: AdminTab; label: string; icon: React.ElementType }[] = [
-      { id: "users", label: "Users", icon: Users },
+  const tabs: { id: AdminTab; label: string; icon: ElementType }[] = [
+    { id: "users", label: "Users", icon: Users },
     { id: "keys", label: "API Keys", icon: KeyRound },
     { id: "audit", label: "Audit", icon: ScrollText },
     { id: "environments", label: "Environments", icon: ShieldCheck },
+    { id: "sources", label: "Sources", icon: FolderGit2 },
   ];
 
-    return (
+  const selectTab = (id: AdminTab) => {
+    setTab(id);
+    setSearchParams(id === "users" ? {} : { tab: id });
+  };
+
+  return (
     <AppShell activeTab="overview" isAdmin>
       <div className="p-6 space-y-6 max-w-5xl">
-          <div>
+        <div>
           <h1 className="text-lg font-semibold text-foreground flex items-center gap-2">
             <ShieldCheck className="w-5 h-5" />
             Admin
@@ -38,13 +57,14 @@ const AdminPage = () => {
                 ? `Signed in as ${me.email} (${me.role})`
                 : "Admin console — live data where available."}
           </p>
-      </div>
+        </div>
 
         <div className="flex items-center gap-1 p-1 bg-card border border-border rounded-lg w-fit flex-wrap">
           {tabs.map((t) => (
-              <button
+            <button
               key={t.id}
-              onClick={() => setTab(t.id)}
+              type="button"
+              onClick={() => selectTab(t.id)}
               className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
                 tab === t.id
                   ? "bg-secondary text-foreground"
@@ -53,20 +73,20 @@ const AdminPage = () => {
             >
               <t.icon className="w-4 h-4" />
               {t.label}
-                                </button>
-                              ))}
-      </div>
+            </button>
+          ))}
+        </div>
 
-      <div className="rounded-lg border border-border bg-card overflow-hidden">
+        <div className="rounded-lg border border-border bg-card overflow-hidden">
           {tab === "users" && (
             <>
               <div className="p-4 border-b border-border">
                 <h2 className="text-sm font-medium text-foreground">Users</h2>
-        </div>
+              </div>
               {users.length === 0 ? (
                 <div className="p-8 text-center text-sm text-muted-foreground">
                   No users returned from the API yet.
-              </div>
+                </div>
               ) : null}
             </>
           )}
@@ -75,11 +95,11 @@ const AdminPage = () => {
             <>
               <div className="p-4 border-b border-border">
                 <h2 className="text-sm font-medium text-foreground">API keys</h2>
-        </div>
+              </div>
               {apiKeys.length === 0 ? (
                 <div className="p-8 text-center text-sm text-muted-foreground">
                   No API keys yet.
-        </div>
+                </div>
               ) : null}
             </>
           )}
@@ -88,11 +108,11 @@ const AdminPage = () => {
             <>
               <div className="p-4 border-b border-border">
                 <h2 className="text-sm font-medium text-foreground">Audit log</h2>
-      </div>
+              </div>
               {auditLog.length === 0 ? (
                 <div className="p-8 text-center text-sm text-muted-foreground">
                   No audit events yet.
-          </div>
+                </div>
               ) : null}
             </>
           )}
@@ -103,12 +123,12 @@ const AdminPage = () => {
                 <h2 className="text-sm font-medium text-foreground">Environments</h2>
                 <span className="text-xs text-muted-foreground">
                   {envsLoading ? "loading…" : `${environments.length} envs`}
-            </span>
-          </div>
+                </span>
+              </div>
               {!envsLoading && environments.length === 0 ? (
                 <div className="p-8 text-center text-sm text-muted-foreground">
                   No environments from grid-core.
-        </div>
+                </div>
               ) : (
                 <div className="divide-y divide-border">
                   {environments.map((env) => (
@@ -126,18 +146,20 @@ const AdminPage = () => {
                               }`
                             : ` · canonical · ${env.unitCount ?? 0} units`}
                         </p>
-          </div>
+                      </div>
                       <span className="text-xs text-muted-foreground flex-shrink-0">
                         {env.approvalRequired ? "approval required" : "auto"}
-          </span>
-            </div>
-          ))}
-        </div>
+                      </span>
+                    </div>
+                  ))}
+                </div>
               )}
             </>
-            )}
-          </div>
-    </div>
+          )}
+
+          {tab === "sources" && <AdminSourcesPanel />}
+        </div>
+      </div>
     </AppShell>
   );
 };

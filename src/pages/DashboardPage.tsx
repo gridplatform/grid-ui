@@ -84,7 +84,7 @@ const DashboardPage = () => {
       color: "text-primary",
     },
     {
-      label: "Git Sync",
+      label: "Config sync",
       value: gitops?.syncStatus || "—",
       sub: gitops?.lastSyncAt
         ? new Date(gitops.lastSyncAt).toLocaleString()
@@ -101,7 +101,15 @@ const DashboardPage = () => {
           {stats.map((s) => (
             <div
               key={s.label}
-              className="p-3.5 rounded-lg border border-border bg-card hover:bg-secondary/30 transition-colors"
+              role={s.label === "Config sync" || s.label === "Infrastructure" ? "button" : undefined}
+              onClick={
+                s.label === "Config sync" || s.label === "Infrastructure"
+                  ? () => navigate("/infrastructure")
+                  : undefined
+              }
+              className={`p-3.5 rounded-lg border border-border bg-card hover:bg-secondary/30 transition-colors${
+                s.label === "Config sync" || s.label === "Infrastructure" ? " cursor-pointer" : ""
+              }`}
             >
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[11px] text-muted-foreground font-medium">{s.label}</span>

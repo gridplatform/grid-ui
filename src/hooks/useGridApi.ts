@@ -348,6 +348,38 @@ export function useSyncGitOps() {
   });
 }
 
+export type ModuleBankStatus = {
+  source: string;
+  remote: boolean;
+  ref: string;
+  localPath: string;
+  syncStatus: string;
+  lastSyncAt?: string;
+  lastSyncError?: string;
+  lastCommit?: string;
+  lastCommitMessage?: string;
+};
+
+/** Local checkout of grid-terraform (separate from desired-state config sync). */
+export function useModuleBankStatus() {
+  return useQuery({
+    queryKey: ["module-bank", "status"],
+    queryFn: () => gridFetch<ModuleBankStatus>("/module-bank/status"),
+    refetchInterval: 30_000,
+  });
+}
+
+export function useSyncModuleBank() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      gridFetch<ModuleBankStatus>("/module-bank/sync", { method: "POST" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["module-bank"] });
+    },
+  });
+}
+
 /**
  * Clone infrastructure
  * POST /api/v1/infrastructures/:id/clone
