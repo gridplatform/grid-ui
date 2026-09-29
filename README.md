@@ -2,8 +2,9 @@
 
 A thin-client infrastructure management console for Grid, built with React + TypeScript. Every UI action maps to a Grid backend API/CLI operation. The frontend renders state; the backend owns it.
 
-**Product:** Grid - Self-hosted Infrastructure Management Tool  
-**Documentation:** [doc.greatplatform.org](https://doc.greatplatform.org)
+**Product:** [Grid Platform](https://gridplatform.org) — self-hosted infrastructure orchestration  
+**Documentation:** [grid-docs](https://github.com/gridplatform/grid-docs) (install, concepts, admin, CLI)  
+**License:** MIT
 
 ---
 
