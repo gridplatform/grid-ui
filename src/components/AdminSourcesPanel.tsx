@@ -3,6 +3,7 @@ import { FolderGit2, RefreshCw, Save } from "lucide-react";
 import {
   useGitOpsStatus,
   useSaveGitOpsSettings,
+  useSyncGitOps,
   useModuleBankStatus,
   useSyncModuleBank,
 } from "@/hooks/useGridApi";
@@ -14,6 +15,7 @@ import {
 export function AdminSourcesPanel() {
   const { data: status, isLoading, refetch } = useGitOpsStatus();
   const saveSettings = useSaveGitOpsSettings();
+  const syncDesiredState = useSyncGitOps();
   const { data: moduleBank, refetch: refetchModuleBank } = useModuleBankStatus();
   const syncModuleBank = useSyncModuleBank();
 
@@ -45,10 +47,23 @@ export function AdminSourcesPanel() {
         syncIntervalSec,
         enabled,
       });
-      setNote("Source settings saved. Operators sync desired state from Infrastructure.");
+      setNote("Source settings saved.");
       await refetch();
     } catch (e) {
       setNote(e instanceof Error ? e.message : "Save failed");
+    }
+  };
+
+  const handleDesiredStateSync = async () => {
+    try {
+      const result = await syncDesiredState.mutateAsync();
+      setNote(
+        `Desired state synced · ${result.synced} files · +${result.created.length} · ~${result.updated.length}` +
+          (result.commit ? ` · ${result.commit.slice(0, 8)}` : "")
+      );
+      await refetch();
+    } catch (e) {
+      setNote(e instanceof Error ? e.message : "Sync failed");
     }
   };
 
@@ -75,8 +90,8 @@ export function AdminSourcesPanel() {
         </h2>
         <p className="text-xs text-muted-foreground mt-1">
           Configure where Grid pulls <strong>desired-state</strong> JSON and the{" "}
-          <strong>Terraform module bank</strong>. Day-to-day Sync and drift live on the
-          Infrastructure page.
+          <strong>Terraform module bank</strong>. Sync is available here and on Infrastructure
+          (drift lives on Infrastructure).
         </p>
       </div>
 
@@ -87,12 +102,27 @@ export function AdminSourcesPanel() {
       )}
 
       <div className="rounded-lg border border-border bg-background p-4 space-y-3">
-        <h3 className="text-sm font-medium text-foreground">Desired-state repository</h3>
-        <p className="text-xs text-muted-foreground">
-          Git repo with{" "}
-          <code className="font-mono">projects/&lt;app&gt;/&lt;cloud&gt;/&lt;env&gt;/…</code>. Synced
-          into <code className="font-mono">GRID_CONFIG_ROOT</code>.
-        </p>
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <h3 className="text-sm font-medium text-foreground">Desired-state repository</h3>
+            <p className="text-xs text-muted-foreground mt-1">
+              Git repo with{" "}
+              <code className="font-mono">projects/&lt;app&gt;/&lt;cloud&gt;/&lt;env&gt;/…</code>.
+              Synced into <code className="font-mono">GRID_CONFIG_ROOT</code>.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void handleDesiredStateSync()}
+            disabled={syncDesiredState.isPending || !enabled}
+            className="inline-flex items-center gap-2 px-3 py-1.5 text-sm rounded-md border border-border hover:bg-secondary disabled:opacity-50"
+          >
+            <RefreshCw
+              className={`w-3.5 h-3.5 ${syncDesiredState.isPending ? "animate-spin" : ""}`}
+            />
+            {syncDesiredState.isPending ? "Syncing…" : "Sync"}
+          </button>
+        </div>
         <label className="block text-xs text-muted-foreground">
           Repo URL
           <input
