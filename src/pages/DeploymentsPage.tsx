@@ -145,7 +145,11 @@ const DeploymentsPage = () => {
   const [watchingId, setWatchingId] = useState<string | null>(null);
 
   const { data: liveDeployments, isLoading: liveLoading, error: liveError } = useDeployments();
-  const { data: infrastructures = [] } = useInfrastructures();
+  const { data: infrastructures = [] } = useInfrastructures({
+    project: selectedProject?.slug,
+    environment: envSlug,
+    enabled: !!selectedProject?.slug,
+  });
 
   const categoryTargets = useMemo(() => enabledTargetsForCategory(tfCategory), [tfCategory]);
   const activeTarget =

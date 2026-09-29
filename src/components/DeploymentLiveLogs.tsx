@@ -1,9 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
+import { getAuthToken } from "@/lib/authStorage";
 
 const API_BASE_URL = import.meta.env.VITE_GRID_API_URL || "/api/v1";
 
 type LiveStatus = "pending" | "planning" | "running" | "success" | "failed" | "cancelled" | string;
+
+type LogPayload = {
+  logs?: string[];
+  lines?: string[];
+  status?: LiveStatus;
+  progress?: number;
+  planSummary?: string;
+};
 
 export type DeploymentLiveLogsProps = {
   deploymentId: string | null;
@@ -11,9 +20,18 @@ export type DeploymentLiveLogsProps = {
   className?: string;
 };
 
+function authHeaders(): HeadersInit {
+  const token = getAuthToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function isTerminal(status: LiveStatus | undefined): boolean {
+  return status === "success" || status === "failed" || status === "cancelled";
+}
+
 /**
- * Streams CLI/terraform output for a deployment via SSE
- * (GET /deployments/:id/logs/stream). Falls back to polling if EventSource fails.
+ * Streams CLI/terraform output for a deployment.
+ * Uses authenticated fetch (EventSource cannot send Bearer tokens).
  */
 export function DeploymentLiveLogs({
   deploymentId,
@@ -32,8 +50,8 @@ export function DeploymentLiveLogs({
     if (!deploymentId) return;
 
     let cancelled = false;
-    let es: EventSource | null = null;
     let pollTimer: ReturnType<typeof setInterval> | null = null;
+    const abort = new AbortController();
 
     setLogs([]);
     setStatus("pending");
@@ -42,114 +60,146 @@ export function DeploymentLiveLogs({
     setError(null);
     setConnected(false);
 
-    const applySnapshot = (data: {
-      logs?: string[];
-      status?: LiveStatus;
-      progress?: number;
-      planSummary?: string;
-    }) => {
+    const applySnapshot = (data: LogPayload) => {
       if (data.logs) setLogs(data.logs);
+      if (data.lines?.length) setLogs((prev) => [...prev, ...data.lines!]);
       if (data.status) setStatus(data.status);
       if (data.progress != null) setProgress(data.progress);
       if (data.planSummary) setPlanSummary(data.planSummary);
     };
 
-    const startPolling = () => {
-      if (pollTimer) return;
-      pollTimer = setInterval(async () => {
-        try {
-          const res = await fetch(`${API_BASE_URL}/deployments/${deploymentId}/logs`);
-          if (!res.ok) return;
-          const data = (await res.json()) as {
-            logs: string[];
-            status: LiveStatus;
-            progress?: number;
-            planSummary?: string;
-          };
-          if (cancelled) return;
-          applySnapshot(data);
-          setConnected(true);
-          if (data.status === "success" || data.status === "failed" || data.status === "cancelled") {
-            if (pollTimer) clearInterval(pollTimer);
-            pollTimer = null;
-          }
-        } catch {
-          // keep trying while active
-        }
-      }, 1000);
+    const fetchLogsOnce = async (): Promise<LogPayload | null> => {
+      const res = await fetch(`${API_BASE_URL}/deployments/${deploymentId}/logs`, {
+        headers: authHeaders(),
+        signal: abort.signal,
+      });
+      if (!res.ok) {
+        if (res.status === 401) setError("Auth required — refresh and log in again");
+        return null;
+      }
+      return (await res.json()) as LogPayload;
     };
 
-    let gotSnapshot = false;
-
-    try {
-      es = new EventSource(`${API_BASE_URL}/deployments/${deploymentId}/logs/stream`);
-
-      es.addEventListener("snapshot", (ev) => {
-        const data = JSON.parse((ev as MessageEvent).data) as {
-          logs: string[];
-          status: LiveStatus;
-          progress?: number;
-          planSummary?: string;
-        };
-        applySnapshot(data);
-        gotSnapshot = true;
-        setConnected(true);
-      });
-
-      es.addEventListener("log", (ev) => {
-        const data = JSON.parse((ev as MessageEvent).data) as {
-          lines: string[];
-          status: LiveStatus;
-          progress?: number;
-        };
-        setLogs((prev) => [...prev, ...data.lines]);
-        setStatus(data.status);
-        if (data.progress != null) setProgress(data.progress);
-        setConnected(true);
-      });
-
-      es.addEventListener("ping", (ev) => {
-        const data = JSON.parse((ev as MessageEvent).data) as {
-          status: LiveStatus;
-          progress?: number;
-        };
-        setStatus(data.status);
-        if (data.progress != null) setProgress(data.progress);
-        setConnected(true);
-      });
-
-      es.addEventListener("done", (ev) => {
-        const data = JSON.parse((ev as MessageEvent).data) as {
-          status: LiveStatus;
-          progress?: number;
-          planSummary?: string;
-          logs?: string[];
-        };
-        if (data.logs) setLogs(data.logs);
-        setStatus(data.status);
-        if (data.progress != null) setProgress(data.progress);
-        if (data.planSummary) setPlanSummary(data.planSummary);
-        es?.close();
-      });
-
-      es.onerror = () => {
-        if (!gotSnapshot) {
-          es?.close();
-          setError("SSE unavailable — polling logs");
-          startPolling();
+    const startPolling = () => {
+      if (pollTimer) return;
+      setError((prev) => prev ?? "Polling logs");
+      const tick = async () => {
+        try {
+          const data = await fetchLogsOnce();
+          if (cancelled || !data) return;
+          applySnapshot(data);
+          setConnected(true);
+          if (isTerminal(data.status)) {
+            if (pollTimer) clearInterval(pollTimer);
+            pollTimer = null;
+            setError(null);
+          }
+        } catch {
+          /* keep trying while active */
         }
       };
-    } catch {
-      startPolling();
-      setError("SSE unavailable — polling logs");
-    }
+      void tick();
+      pollTimer = setInterval(() => void tick(), 1000);
+    };
+
+    /** Authenticated SSE via fetch — EventSource cannot send Authorization. */
+    const startStream = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/deployments/${deploymentId}/logs/stream`, {
+          headers: {
+            ...authHeaders(),
+            Accept: "text/event-stream",
+          },
+          signal: abort.signal,
+        });
+
+        if (!res.ok || !res.body) {
+          setError("Live stream unavailable — polling logs");
+          startPolling();
+          return;
+        }
+
+        setConnected(true);
+        setError(null);
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (!cancelled) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          const parts = buffer.split("\n\n");
+          buffer = parts.pop() ?? "";
+
+          for (const chunk of parts) {
+            const lines = chunk.split("\n");
+            let event = "message";
+            const dataLines: string[] = [];
+            for (const line of lines) {
+              if (line.startsWith("event:")) event = line.slice(6).trim();
+              else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
+            }
+            if (dataLines.length === 0) continue;
+            try {
+              const data = JSON.parse(dataLines.join("\n")) as LogPayload & {
+                message?: string;
+              };
+              if (event === "snapshot" || event === "done") {
+                applySnapshot(data);
+              } else if (event === "log") {
+                applySnapshot(data);
+              } else if (event === "ping") {
+                if (data.status) setStatus(data.status);
+                if (data.progress != null) setProgress(data.progress);
+              } else if (event === "error") {
+                setError(data.message || "Stream error");
+              }
+              if (event === "done" || isTerminal(data.status)) {
+                setError(null);
+                return;
+              }
+            } catch {
+              /* ignore malformed SSE frames */
+            }
+          }
+        }
+
+        // Stream ended without done — finish via one-shot poll.
+        if (!cancelled) startPolling();
+      } catch (e) {
+        if (cancelled || (e instanceof DOMException && e.name === "AbortError")) return;
+        setError("Live stream unavailable — polling logs");
+        startPolling();
+      }
+    };
+
+    // Immediate snapshot so finished releases show logs without waiting on SSE.
+    void (async () => {
+      try {
+        const data = await fetchLogsOnce();
+        if (cancelled || !data) {
+          if (!cancelled) void startStream();
+          return;
+        }
+        applySnapshot(data);
+        setConnected(true);
+        if (isTerminal(data.status)) {
+          setError(null);
+          return;
+        }
+        void startStream();
+      } catch {
+        if (!cancelled) void startStream();
+      }
+    })();
 
     return () => {
       cancelled = true;
-      es?.close();
+      abort.abort();
       if (pollTimer) clearInterval(pollTimer);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- reconnect only when id changes
   }, [deploymentId]);
 
   useEffect(() => {

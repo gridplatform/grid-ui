@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import AppShell from "@/components/AppShell";
 import {
   Rocket,
@@ -22,6 +22,7 @@ import {
   usePendingApprovals,
   useReleases,
 } from "@/hooks/useGridApi";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { DeploymentLiveLogs } from "@/components/DeploymentLiveLogs";
 import type { Release, ReleaseMode, ReleaseStatus } from "@/types/api";
 
@@ -44,10 +45,16 @@ const modeLabels: Record<ReleaseMode, string> = {
 };
 
 const ReleasesPage = () => {
+  const { projectSlug, selectedEnv, selectedProject } = useWorkspace();
   const { data: releases = [], isLoading, error } = useReleases();
   const { data: approvals = [] } = usePendingApprovals();
-  const { data: environments = [] } = useEnvironments();
-  const { data: infrastructures = [] } = useInfrastructures();
+  const { data: environments = [] } = useEnvironments(projectSlug, {
+    enabled: !!projectSlug,
+  });
+  const { data: infrastructures = [] } = useInfrastructures({
+    project: projectSlug,
+    enabled: !!projectSlug,
+  });
   const createRelease = useCreateRelease();
 
   const [envFilter, setEnvFilter] = useState("");
@@ -63,6 +70,14 @@ const ReleasesPage = () => {
   const [infrastructureId, setInfrastructureId] = useState("");
   const [customCommand, setCustomCommand] = useState("grid status --config-dir .");
   const [releaseName, setReleaseName] = useState("");
+
+  // Workspace project/env changed → keep the modal form on the active project.
+  useEffect(() => {
+    setEnvironment(selectedEnv?.slug || "");
+    setProvider("");
+    setInfrastructureId("");
+    setEnvFilter("");
+  }, [projectSlug, selectedEnv?.slug]);
 
   const active = useMemo(
     () => releases.find((r) => r.status === "deploying"),
@@ -110,7 +125,7 @@ const ReleasesPage = () => {
   const openModal = () => {
     setSubmitNote(null);
     setMode("plan");
-    setEnvironment(environments[0]?.slug || "");
+    setEnvironment(selectedEnv?.slug || environments[0]?.slug || "");
     setProvider("");
     setInfrastructureId("");
     setCustomCommand("grid status --config-dir .");
@@ -404,7 +419,13 @@ const ReleasesPage = () => {
               onClick={(e) => e.stopPropagation()}
             >
               <div className="sticky top-0 bg-card border-b border-border px-4 py-3 flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-foreground">New release</h2>
+                <div>
+                  <h2 className="text-sm font-semibold text-foreground">New release</h2>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    {selectedProject?.name || projectSlug || "No project"}
+                    {selectedEnv ? ` · ${selectedEnv.name}` : ""}
+                  </p>
+                </div>
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}

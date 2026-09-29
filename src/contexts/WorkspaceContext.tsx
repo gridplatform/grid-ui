@@ -4,10 +4,17 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
-import { useEnvironments, useProjects } from "@/hooks/useGridApi";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  invalidateWorkspaceQueries,
+  useEnvironments,
+  useGitOpsStatus,
+  useProjects,
+} from "@/hooks/useGridApi";
 import type { Environment, Project } from "@/types/api";
 
 const LS_PROJECT = "grid.workspace.projectId";
@@ -32,7 +39,23 @@ type WorkspaceContextValue = {
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const { data: projects = [], isLoading: projectsLoading } = useProjects();
+  const { data: gitops } = useGitOpsStatus();
+
+  // Auto-sync / Admin Sync: when desired-state commit or sync time changes, refresh project list.
+  const syncFingerprint = `${gitops?.lastCommit ?? ""}|${gitops?.lastSyncAt ?? ""}`;
+  const lastSyncFingerprint = useRef<string | null>(null);
+  useEffect(() => {
+    if (!gitops?.lastCommit && !gitops?.lastSyncAt) return;
+    if (lastSyncFingerprint.current === null) {
+      lastSyncFingerprint.current = syncFingerprint;
+      return;
+    }
+    if (lastSyncFingerprint.current === syncFingerprint) return;
+    lastSyncFingerprint.current = syncFingerprint;
+    invalidateWorkspaceQueries(queryClient);
+  }, [syncFingerprint, gitops?.lastCommit, gitops?.lastSyncAt, queryClient]);
 
   const [projectId, setProjectId] = useState<string | null>(() => {
     try {
