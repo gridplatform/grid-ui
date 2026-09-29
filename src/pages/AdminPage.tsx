@@ -3,9 +3,20 @@ import { useSearchParams } from "react-router-dom";
 import AppShell from "@/components/AppShell";
 import { AdminSourcesPanel } from "@/components/AdminSourcesPanel";
 import { ShieldCheck, Users, KeyRound, ScrollText, FolderGit2 } from "lucide-react";
-import { useCurrentUser, useEnvironments } from "@/hooks/useGridApi";
+import {
+  useAdminUsers,
+  useAuditLog,
+  useCurrentUser,
+  useEnvironments,
+} from "@/hooks/useGridApi";
 
 type AdminTab = "users" | "keys" | "audit" | "environments" | "sources";
+
+const outcomeClass: Record<string, string> = {
+  success: "text-success",
+  failure: "text-destructive",
+  denied: "text-warning",
+};
 
 const AdminPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -17,6 +28,8 @@ const AdminPage = () => {
   );
   const { data: me, isLoading: meLoading } = useCurrentUser();
   const { data: environments = [], isLoading: envsLoading } = useEnvironments();
+  const { data: users = [], isLoading: usersLoading } = useAdminUsers();
+  const { data: auditLog = [], isLoading: auditLoading } = useAuditLog(300);
 
   useEffect(() => {
     const t = searchParams.get("tab") as AdminTab | null;
@@ -24,10 +37,6 @@ const AdminPage = () => {
       setTab(t);
     }
   }, [searchParams]);
-
-  const users: never[] = [];
-  const apiKeys: never[] = [];
-  const auditLog: never[] = [];
 
   const tabs: { id: AdminTab; label: string; icon: ElementType }[] = [
     { id: "users", label: "Users", icon: Users },
@@ -80,14 +89,36 @@ const AdminPage = () => {
         <div className="rounded-lg border border-border bg-card overflow-hidden">
           {tab === "users" && (
             <>
-              <div className="p-4 border-b border-border">
+              <div className="p-4 border-b border-border flex items-center justify-between">
                 <h2 className="text-sm font-medium text-foreground">Users</h2>
+                <span className="text-xs text-muted-foreground">
+                  {usersLoading ? "loading…" : `${users.length} users`}
+                </span>
               </div>
-              {users.length === 0 ? (
+              {usersLoading ? (
+                <div className="p-8 text-center text-sm text-muted-foreground">Loading users…</div>
+              ) : users.length === 0 ? (
                 <div className="p-8 text-center text-sm text-muted-foreground">
                   No users returned from the API yet.
                 </div>
-              ) : null}
+              ) : (
+                <div className="divide-y divide-border">
+                  {users.map((u) => (
+                    <div
+                      key={u.id}
+                      className="flex items-center justify-between px-4 py-3 gap-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">
+                          {u.name || u.email}
+                        </p>
+                        <p className="text-xs text-muted-foreground truncate">{u.email}</p>
+                      </div>
+                      <span className="text-xs text-muted-foreground flex-shrink-0">{u.role}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </>
           )}
 
@@ -96,24 +127,55 @@ const AdminPage = () => {
               <div className="p-4 border-b border-border">
                 <h2 className="text-sm font-medium text-foreground">API keys</h2>
               </div>
-              {apiKeys.length === 0 ? (
-                <div className="p-8 text-center text-sm text-muted-foreground">
-                  No API keys yet.
-                </div>
-              ) : null}
+              <div className="p-8 text-center text-sm text-muted-foreground">
+                API key management is not wired yet. When keys are created or revoked, those
+                actions will appear in the Audit log.
+              </div>
             </>
           )}
 
           {tab === "audit" && (
             <>
-              <div className="p-4 border-b border-border">
+              <div className="p-4 border-b border-border flex items-center justify-between">
                 <h2 className="text-sm font-medium text-foreground">Audit log</h2>
+                <span className="text-xs text-muted-foreground">
+                  {auditLoading ? "loading…" : `${auditLog.length} events`}
+                </span>
               </div>
-              {auditLog.length === 0 ? (
+              {auditLoading ? (
+                <div className="p-8 text-center text-sm text-muted-foreground">Loading audit…</div>
+              ) : auditLog.length === 0 ? (
                 <div className="p-8 text-center text-sm text-muted-foreground">
-                  No audit events yet.
+                  No audit events yet. Releases, syncs, user changes, and drift checks will show
+                  up here.
                 </div>
-              ) : null}
+              ) : (
+                <div className="divide-y divide-border max-h-[32rem] overflow-y-auto">
+                  {auditLog.map((ev) => (
+                    <div key={ev.id} className="px-4 py-3 space-y-1">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm text-foreground">{ev.summary}</p>
+                        <span
+                          className={`text-[11px] font-medium uppercase ${
+                            outcomeClass[ev.outcome] || "text-muted-foreground"
+                          }`}
+                        >
+                          {ev.outcome}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground break-words">
+                        {new Date(ev.at).toLocaleString()}
+                        {" · "}
+                        {ev.actor}
+                        {ev.actorRole ? ` (${ev.actorRole})` : ""}
+                        {" · "}
+                        <span className="font-mono">{ev.action}</span>
+                        {ev.resourceName ? ` · ${ev.resourceName}` : ""}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </>
           )}
 

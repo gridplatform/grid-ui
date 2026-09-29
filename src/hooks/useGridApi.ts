@@ -600,6 +600,24 @@ export function useRejectRelease() {
 }
 
 /**
+ * POST /api/v1/releases/:id/cancel — admin: cancel queued or kill deploying release
+ */
+export function useCancelRelease() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) =>
+      gridFetch<Release>(`/releases/${id}/cancel`, { method: "POST" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["releases"] });
+      queryClient.invalidateQueries({ queryKey: ["deployments"] });
+      queryClient.invalidateQueries({ queryKey: ["infrastructures"] });
+      queryClient.invalidateQueries({ queryKey: ["audit"] });
+    },
+  });
+}
+
+/**
  * Rollback a release
  * POST /api/v1/releases/:id/rollback
  */
@@ -820,5 +838,29 @@ export function useCurrentUser() {
     queryFn: () => gridFetch<User>("/auth/me"),
     enabled: !!getAuthToken(),
     retry: false,
+  });
+}
+
+/**
+ * GET /api/v1/auth/users — admin only
+ */
+export function useAdminUsers() {
+  return useQuery({
+    queryKey: ["auth", "users"],
+    queryFn: async () => {
+      const data = await gridFetch<{ users: User[] }>("/auth/users");
+      return data.users;
+    },
+  });
+}
+
+/**
+ * GET /api/v1/audit — admin only
+ */
+export function useAuditLog(limit = 200) {
+  return useQuery({
+    queryKey: ["audit", limit],
+    queryFn: () => gridFetch<import("@/types/api").AuditEvent[]>(`/audit?limit=${limit}`),
+    refetchInterval: 10_000,
   });
 }
