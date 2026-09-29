@@ -41,7 +41,6 @@ const initialEnvironments: Environment[] = [
   { id: "prod", name: "Production", approvalRequired: true },
   { id: "staging", name: "Staging", approvalRequired: true },
   { id: "dev", name: "Development", approvalRequired: false },
-  { id: "sandbox", name: "Sandbox", approvalRequired: false },
 ];
 
 const initialReleases: Release[] = [
@@ -50,7 +49,7 @@ const initialReleases: Release[] = [
   { id: "rel-003", name: "auth-service", version: "v3.1.0", environment: "Staging", status: "running", releaseType: "gitops", createdBy: "admin@grid.io", createdByRole: "maintainer", createdAt: "30 min ago", logs: ["[gitops] Syncing from main branch...", "[gitops] Applying manifests...", "[gitops] Waiting for rollout..."] },
   { id: "rel-004", name: "web-frontend", version: "v5.2.3", environment: "Development", status: "success", releaseType: "terraform", createdBy: "alice@grid.io", createdByRole: "developer", createdAt: "1h ago", logs: ["[apply] Apply complete! Resources: 1 added, 0 changed, 0 destroyed."] },
   { id: "rel-005", name: "db-migration", version: "v1.0.4", environment: "Production", status: "failed", releaseType: "terraform", createdBy: "admin@grid.io", createdByRole: "maintainer", createdAt: "3h ago", approvedBy: "admin@grid.io", logs: ["[apply] aws_db_instance.primary: Modifying...", "[error] Error: timeout waiting for state change", "[error] Apply failed."] },
-  { id: "rel-006", name: "monitoring-stack", version: "v2.0.0", environment: "Sandbox", status: "success", releaseType: "custom", createdBy: "bob@grid.io", createdByRole: "developer", createdAt: "5h ago", customCommand: "grid deploy monitoring --env sandbox --stack full", logs: ["[custom] Running: grid deploy monitoring --env sandbox --stack full", "[custom] Deploy complete."] },
+  { id: "rel-006", name: "monitoring-stack", version: "v2.0.0", environment: "Development", status: "success", releaseType: "custom", createdBy: "bob@grid.io", createdByRole: "developer", createdAt: "5h ago", customCommand: "grid env clone development --name monitoring-try --ttl 24h", logs: ["[clone] .ephemeral/development--monitoring-try", "[custom] Deploy complete."] },
   { id: "rel-007", name: "cache-layer", version: "v1.3.2", environment: "Staging", status: "rejected", releaseType: "terraform", createdBy: "alice@grid.io", createdByRole: "developer", createdAt: "1d ago", logs: ["[plan] 5 resources to destroy — rejected by maintainer."] },
   { id: "rel-008", name: "k8s-ingress", version: "v1.0.0", environment: "Production", status: "scheduled", releaseType: "gitops", createdBy: "admin@grid.io", createdByRole: "maintainer", createdAt: "10 min ago", scheduledAt: "2026-02-26 02:00", logs: ["[scheduled] Will run at 2026-02-26 02:00 UTC"] },
 ];

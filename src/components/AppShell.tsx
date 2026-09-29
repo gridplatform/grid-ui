@@ -21,7 +21,6 @@ const teams = [
 const projects = [
   { id: "prod", name: "production", env: "Production" },
   { id: "staging", name: "staging", env: "Staging" },
-  { id: "sandbox", name: "sandbox", env: "Sandbox" },
   { id: "dev", name: "development", env: "Development" },
 ];
 
