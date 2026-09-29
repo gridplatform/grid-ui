@@ -5,7 +5,7 @@
  * Point VITE_GRID_API_URL at grid-core / CLI bridge.
  */
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import type { GridDeployRequest } from "@/lib/deployContract";
 import { clearAuthToken, getAuthToken } from "@/lib/authStorage";
 import type {
@@ -342,10 +342,18 @@ export function useSyncGitOps() {
         commitMessage?: string;
       }>("/gitops/sync", { method: "POST" }),
     onSuccess: () => {
+      // Config tree may have gained/lost projects — refresh workspace lists.
+      void invalidateWorkspaceQueries(queryClient);
       queryClient.invalidateQueries({ queryKey: ["gitops"] });
-      queryClient.invalidateQueries({ queryKey: ["infrastructures"] });
     },
   });
+}
+
+/** Drop cached projects / envs / infra after desired-state sync (manual or detected). */
+export function invalidateWorkspaceQueries(queryClient: QueryClient) {
+  void queryClient.invalidateQueries({ queryKey: ["projects"] });
+  void queryClient.invalidateQueries({ queryKey: ["environments"] });
+  void queryClient.invalidateQueries({ queryKey: ["infrastructures"] });
 }
 
 export type ModuleBankStatus = {
@@ -736,7 +744,9 @@ export function useEnvironments(
       return gridFetch<Environment[]>(`/environments${qs}`);
     },
     enabled: options?.enabled !== false,
-    staleTime: 30_000,
+    staleTime: 5_000,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -748,7 +758,9 @@ export function useProjects() {
   return useQuery({
     queryKey: ["projects"],
     queryFn: () => gridFetch<Project[]>("/projects"),
-    staleTime: 30_000,
+    staleTime: 5_000,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   });
 }
 

@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { ShieldCheck, BookOpen } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { Search, ChevronDown, LogOut, Settings, User } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranding } from "@/contexts/BrandingContext";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { productFlags, type FeatureKey } from "@/config/features";
 import { GridLogo } from "@/components/GridLogo";
-import { useGridSearch } from "@/hooks/useGridApi";
+import { invalidateWorkspaceQueries, useGridSearch } from "@/hooks/useGridApi";
 import type { Environment } from "@/types/api";
 
 interface AppShellProps {
@@ -44,6 +45,7 @@ const AppShell = ({ children, activeTab = "overview", isAdmin: isAdminProp }: Ap
   const { customLogoUrl, orgName } = useBranding();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const isAdmin = isAdminProp ?? user?.role === "admin";
   const {
     projects,
@@ -62,6 +64,17 @@ const AppShell = ({ children, activeTab = "overview", isAdmin: isAdminProp }: Ap
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [teamSearch, setTeamSearch] = useState("");
   const [projectSearch, setProjectSearch] = useState("");
+
+  const openWorkspaceMenu = () => {
+    setDropdownOpen((open) => {
+      const next = !open;
+      if (next) {
+        invalidateWorkspaceQueries(queryClient);
+      }
+      return next;
+    });
+    setUserMenuOpen(false);
+  };
 
   const { data: searchResults, isFetching: searchLoading } = useGridSearch(
     searchOpen ? searchQuery : ""
@@ -117,10 +130,7 @@ const AppShell = ({ children, activeTab = "overview", isAdmin: isAdminProp }: Ap
 
             <div className="relative min-w-0">
               <button
-                onClick={() => {
-                  setDropdownOpen(!dropdownOpen);
-                  setUserMenuOpen(false);
-                }}
+                onClick={openWorkspaceMenu}
                 className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-secondary transition-colors text-sm min-w-0"
               >
                 <div className="w-5 h-5 rounded bg-secondary flex items-center justify-center text-xs text-foreground font-medium flex-shrink-0">
