@@ -48,8 +48,6 @@ import type { Deployment as ApiDeployment } from "@/types/api";
 import { useNavigate } from "react-router-dom";
 import { DeploymentLiveLogs } from "@/components/DeploymentLiveLogs";
 
-const USE_MOCK = import.meta.env.VITE_USE_MOCK_DATA !== "false";
-
 type DeploymentStatus = "queued" | "pending" | "planning" | "running" | "success" | "failed";
 
 interface DeploymentRow {
@@ -94,252 +92,6 @@ const tfIcons: Record<TerraformCategory, React.ElementType> = {
   cicd: GitBranch,
   "observability-infra": Activity,
   other: Boxes,
-};
-
-const mockDeployments: DeploymentRow[] = [
-  {
-    id: "dep-010",
-    name: "bastion-host",
-    engine: "terraform",
-    category: "compute",
-    provider: "aws",
-    moduleOrKind: "ec2-instance",
-    environment: "production",
-    status: "success",
-    createdBy: "admin@grid.io",
-    createdAt: "6h ago",
-    details: "Bastion host, t3.medium",
-  },
-  {
-    id: "dep-002",
-    name: "gke-platform",
-    engine: "terraform",
-    category: "kubernetes-cluster",
-    provider: "gcp",
-    moduleOrKind: "kubernetes-engine",
-    environment: "production",
-    status: "running",
-    createdBy: "alice@grid.io",
-    createdAt: "15m ago",
-    details: "GKE · 1.30 · 3 node pools · us-central1",
-  },
-  {
-    id: "dep-030",
-    name: "eks-prod",
-    engine: "terraform",
-    category: "kubernetes-cluster",
-    provider: "aws",
-    moduleOrKind: "eks",
-    environment: "production",
-    status: "success",
-    createdBy: "admin@grid.io",
-    createdAt: "1d ago",
-    details: "EKS · 1.30 · private · us-east-1",
-  },
-  {
-    id: "dep-031",
-    name: "aks-staging",
-    engine: "terraform",
-    category: "kubernetes-cluster",
-    provider: "azure",
-    moduleOrKind: "aks",
-    environment: "staging",
-    status: "success",
-    createdBy: "bob@grid.io",
-    createdAt: "2d ago",
-    details: "AKS · 1.29 · eastus",
-  },
-  {
-    id: "dep-032",
-    name: "oke-apps",
-    engine: "terraform",
-    category: "kubernetes-cluster",
-    provider: "oracle",
-    moduleOrKind: "oke",
-    environment: "production",
-    status: "queued",
-    createdBy: "alice@grid.io",
-    createdAt: "8m ago",
-    details: "OKE · us-ashburn-1",
-  },
-  {
-    id: "dep-033",
-    name: "rosa-shared",
-    engine: "terraform",
-    category: "kubernetes-cluster",
-    provider: "openshift",
-    moduleOrKind: "rosa-cluster",
-    environment: "production",
-    status: "planning",
-    createdBy: "admin@grid.io",
-    createdAt: "3m ago",
-    details: "ROSA · us-east-1",
-  },
-  {
-    id: "dep-003",
-    name: "prod-vpc",
-    engine: "terraform",
-    category: "network",
-    provider: "aws",
-    moduleOrKind: "vpc",
-    environment: "production",
-    status: "success",
-    createdBy: "admin@grid.io",
-    createdAt: "2d ago",
-    details: "VPC with 6 subnets, NAT, security groups",
-  },
-  {
-    id: "dep-004",
-    name: "postgres-primary",
-    engine: "terraform",
-    category: "database",
-    provider: "aws",
-    moduleOrKind: "rds",
-    environment: "production",
-    status: "success",
-    createdBy: "admin@grid.io",
-    createdAt: "3d ago",
-    details: "RDS PostgreSQL 15, Multi-AZ",
-  },
-  {
-    id: "dep-020",
-    name: "payments-api",
-    engine: "kubernetes",
-    category: "workload",
-    provider: "gke-platform",
-    moduleOrKind: "workload",
-    environment: "production",
-    status: "success",
-    createdBy: "jamie@grid.io",
-    createdAt: "1h ago",
-    details: "App on cluster gke-platform",
-  },
-  {
-    id: "dep-021",
-    name: "ingress-nginx",
-    engine: "kubernetes",
-    category: "helm-release",
-    provider: "gke-platform",
-    moduleOrKind: "helm-release",
-    environment: "production",
-    status: "running",
-    createdBy: "alice@grid.io",
-    createdAt: "20m ago",
-    details: "Helm chart on gke-platform",
-  },
-  {
-    id: "dep-022",
-    name: "nightly-etl",
-    engine: "kubernetes",
-    category: "cronjob",
-    provider: "eks-staging",
-    moduleOrKind: "cronjob",
-    environment: "staging",
-    status: "queued",
-    createdBy: "bob@grid.io",
-    createdAt: "5m ago",
-    details: "CronJob 0 2 * * *",
-  },
-];
-
-const k8sTemplates: Record<KubernetesWorkloadKind, string> = {
-  workload: JSON.stringify(
-    {
-      name: "payments-api",
-      engine: "kubernetes",
-      resourceType: "workload",
-      environment: "production",
-      config: {
-        cluster: "gke-platform",
-        namespace: "payments",
-        image: "ghcr.io/acme/payments-api:1.4.0",
-        replicas: 3,
-        service: { port: 80, targetPort: 8080 },
-        ingress: { host: "payments.example.com" },
-      },
-    } satisfies GridDeployRequest,
-    null,
-    2,
-  ),
-  "helm-release": JSON.stringify(
-    {
-      name: "ingress-nginx",
-      engine: "kubernetes",
-      resourceType: "helm-release",
-      environment: "production",
-      config: {
-        cluster: "gke-platform",
-        namespace: "ingress-nginx",
-        chart: "ingress-nginx",
-        repo: "https://kubernetes.github.io/ingress-nginx",
-        version: "4.11.0",
-        values: {},
-      },
-    } satisfies GridDeployRequest,
-    null,
-    2,
-  ),
-  kustomize: JSON.stringify(
-    {
-      name: "payments-overlay",
-      engine: "kubernetes",
-      resourceType: "kustomize",
-      environment: "staging",
-      config: {
-        cluster: "eks-staging",
-        path: "overlays/staging",
-      },
-    } satisfies GridDeployRequest,
-    null,
-    2,
-  ),
-  cronjob: JSON.stringify(
-    {
-      name: "nightly-etl",
-      engine: "kubernetes",
-      resourceType: "cronjob",
-      environment: "staging",
-      config: {
-        cluster: "eks-staging",
-        namespace: "batch",
-        schedule: "0 2 * * *",
-        image: "ghcr.io/acme/etl:2.0.0",
-      },
-    } satisfies GridDeployRequest,
-    null,
-    2,
-  ),
-  job: JSON.stringify(
-    {
-      name: "migrate-db",
-      engine: "kubernetes",
-      resourceType: "job",
-      environment: "staging",
-      config: {
-        cluster: "eks-staging",
-        namespace: "payments",
-        image: "ghcr.io/acme/migrate:1.0.0",
-      },
-    } satisfies GridDeployRequest,
-    null,
-    2,
-  ),
-  config: JSON.stringify(
-    {
-      name: "payments-config",
-      engine: "kubernetes",
-      resourceType: "config",
-      environment: "production",
-      config: {
-        cluster: "gke-platform",
-        namespace: "payments",
-        kind: "ConfigMap",
-        data: { LOG_LEVEL: "info" },
-      },
-    } satisfies GridDeployRequest,
-    null,
-    2,
-  ),
 };
 
 const targetKey = (target: TerraformTarget) => `${target.provider}.${target.resourceType}`;
@@ -404,14 +156,7 @@ const DeploymentsPage = () => {
     [liveDeployments]
   );
 
-  const filtered = USE_MOCK
-    ? mockDeployments.filter((d) => {
-        if (d.engine === "terraform" && !isDeployEnabled(d.provider, d.moduleOrKind)) return false;
-        if (d.engine !== engine) return false;
-        if (engine === "terraform") return d.category === tfCategory;
-        return d.category === k8sKind;
-      })
-    : liveRows.filter((d) => d.engine === engine);
+  const filtered = liveRows.filter((d) => d.engine === engine);
 
   const openCreate = (target?: TerraformTarget) => {
     setSubmitNote(null);
@@ -454,14 +199,6 @@ const DeploymentsPage = () => {
       }
       if (parsed.engine === "kubernetes") {
         setSubmitNote("Kubernetes apply is not implemented yet (API returns 501). Use terraform for infrastructure.");
-        return;
-      }
-
-      if (USE_MOCK) {
-        setSubmitNote(
-          `Mock mode: would ${mode} ${parsed.name} · ${parsed.resourceType}. Set VITE_USE_MOCK_DATA=false for live API.`,
-        );
-        setShowCreateModal(false);
         return;
       }
 
@@ -509,7 +246,7 @@ const DeploymentsPage = () => {
           />
         )}
 
-        {!USE_MOCK && liveError && (
+        {liveError && (
           <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
             {liveError instanceof Error ? liveError.message : "Failed to load deployments"}
           </div>
@@ -614,15 +351,13 @@ const DeploymentsPage = () => {
                 : KUBERNETES_KINDS.find((k) => k.id === k8sKind)?.label}
             </h2>
             <span className="text-xs text-muted-foreground">
-              {!USE_MOCK && liveLoading ? "loading…" : `${filtered.length} deployments`}
+              {liveLoading ? "loading…" : `${filtered.length} deployments`}
             </span>
           </div>
 
           {filtered.length === 0 ? (
             <div className="p-8 text-center text-sm text-muted-foreground">
-              {USE_MOCK
-                ? "No deployments in this category yet."
-                : "No deployments yet. Plan or apply to create infrastructure from JSON."}
+              {"No deployments yet. Plan or apply to create infrastructure from JSON."}
             </div>
           ) : (
             <div className="divide-y divide-border">
@@ -633,7 +368,7 @@ const DeploymentsPage = () => {
                   <div
                     key={dep.id}
                     onClick={() => {
-                      if (!USE_MOCK && dep.infrastructureId) {
+                      if (dep.infrastructureId) {
                         navigate(`/infrastructure/${dep.infrastructureId}`);
                       }
                     }}

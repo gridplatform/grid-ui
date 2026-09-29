@@ -1,16 +1,13 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import AppShell from "@/components/AppShell";
-import { generateStressResources } from "@/data/stressTestData";
 import {
   Server, Cpu, HardDrive, Activity, ChevronRight, Search,
   Database, Cloud, Network,
   Monitor, Globe, Box, Timer, Layers, Shield, Container,
 } from "lucide-react";
-import { useInfrastructures } from "@/hooks/useGridApi";
+import { useEnvironments, useInfrastructures } from "@/hooks/useGridApi";
 import type { InfrastructureListItem } from "@/types/api";
-
-const USE_MOCK = import.meta.env.VITE_USE_MOCK_DATA !== "false";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -34,11 +31,9 @@ export interface Resource {
   environment: string;
   provider: string;
   connections: string[];
-  config: Record<string, any>;
+  config: Record<string, unknown>;
   cluster?: string;
 }
-
-export const mockResources: Resource[] = generateStressResources();
 
 function mapListItem(item: InfrastructureListItem): Resource {
   const status: ResourceStatus =
@@ -118,11 +113,12 @@ const InfrastructurePage = () => {
   const [statusFilter, setStatusFilter] = useState<ResourceStatus | "">("");
 
   const { data: liveItems, isLoading, error } = useInfrastructures();
+  const { data: environments = [] } = useEnvironments();
 
-  const resources = useMemo(() => {
-    if (USE_MOCK) return mockResources;
-    return (liveItems || []).map(mapListItem);
-  }, [liveItems]);
+  const resources = useMemo(
+    () => (liveItems || []).map(mapListItem),
+    [liveItems]
+  );
 
   const filtered = useMemo(() => {
     return resources.filter((r) => {
@@ -176,7 +172,7 @@ const InfrastructurePage = () => {
           </div>
         </div>
 
-        {!USE_MOCK && error && (
+        {error && (
           <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
             {error instanceof Error ? error.message : "Failed to load infrastructures"}
           </div>
@@ -215,11 +211,13 @@ const InfrastructurePage = () => {
             className="bg-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
           >
             <option value="">All environments</option>
-            <option value="Production">Production</option>
-            <option value="Staging">Staging</option>
-            <option value="dev">dev</option>
-            <option value="production">production</option>
-            <option value="staging">staging</option>
+            {environments.map((env) => (
+              <option key={env.id} value={env.slug}>
+                {env.kind === "ephemeral"
+                  ? `${env.name}${env.expired ? " (expired)" : env.ttl ? ` · TTL ${env.ttl}` : ""}`
+                  : env.name}
+              </option>
+            ))}
           </select>
           <select
             value={statusFilter}
@@ -236,11 +234,9 @@ const InfrastructurePage = () => {
 
         <div className="rounded-lg border border-border bg-card overflow-hidden">
           <div className="p-4 border-b border-border flex items-center justify-between">
-            <h2 className="text-sm font-medium text-foreground">
-              {USE_MOCK ? "Resources" : "Infrastructures"}
-            </h2>
+            <h2 className="text-sm font-medium text-foreground">Infrastructures</h2>
             <span className="text-xs text-muted-foreground">
-              {!USE_MOCK && isLoading ? "loading…" : `${filtered.length} items`}
+              {isLoading ? "loading…" : `${filtered.length} items`}
             </span>
           </div>
           <div className="grid grid-cols-[minmax(200px,2fr)_120px_90px_100px_100px_120px_80px_80px_32px] gap-3 px-4 py-2 text-xs text-muted-foreground font-medium uppercase tracking-wider border-b border-border">
@@ -254,7 +250,7 @@ const InfrastructurePage = () => {
             <span>RAM</span>
             <span></span>
           </div>
-          {!USE_MOCK && !isLoading && filtered.length === 0 ? (
+          {!isLoading && filtered.length === 0 ? (
             <div className="p-8 text-center text-sm text-muted-foreground">
               No infrastructures yet. Create one from Deployments (Plan or Apply), or import via CLI.
             </div>

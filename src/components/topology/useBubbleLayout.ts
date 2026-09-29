@@ -1,5 +1,6 @@
 import type { Node, Edge } from "@xyflow/react";
-import type { CloudProvider, ResourceLayer } from "@/data/topologyTypes";
+import type { TopologyProvider } from "@/types/api";
+import type { ResourceLayer } from "@/data/topologyTypes";
 
 const COLLAPSED_SIZE = 260;
 const EXPANDED_SIZE = 900;
@@ -8,7 +9,7 @@ const GAP_Y = 100;
 const SECTION_GAP = 140;
 
 export function buildBubbleLayout(
-  providers: CloudProvider[],
+  providers: TopologyProvider[],
   expandedVpcs: Set<string>,
   visibleLayers: Set<ResourceLayer>,
   onToggle: (id: string) => void,

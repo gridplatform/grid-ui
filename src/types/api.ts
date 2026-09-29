@@ -481,18 +481,28 @@ export interface ScalingPolicy {
 
 // ─── Environment Types ──────────────────────────────────────────────────────
 
+export type EnvironmentKind = "canonical" | "ephemeral";
+
 /**
  * Environment
  * GET /api/v1/environments → Environment[]
+ * Canonical envs from GRID_CONFIG_ROOT plus ephemeral TTL clones.
  */
 export interface Environment {
   id: string;
   name: string;
   slug: string;
   order: number;
+  kind?: EnvironmentKind;
   isProduction: boolean;
   approvalRequired: boolean;
   requiredApproverRole?: "developer" | "maintainer" | "admin";
+  /** Present for ephemeral clones — the canonical env they were cloned from */
+  baseEnv?: string;
+  ttl?: string;
+  expiresAt?: string;
+  expired?: boolean;
+  unitCount?: number;
   createdAt: string;
   updatedAt: string;
 }

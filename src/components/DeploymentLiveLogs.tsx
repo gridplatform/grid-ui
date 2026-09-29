@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 
 const API_BASE_URL = import.meta.env.VITE_GRID_API_URL || "/api/v1";
-const USE_MOCK = import.meta.env.VITE_USE_MOCK_DATA !== "false";
 
 type LiveStatus = "pending" | "planning" | "running" | "success" | "failed" | "cancelled" | string;
 
@@ -30,7 +29,7 @@ export function DeploymentLiveLogs({
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!deploymentId || USE_MOCK) return;
+    if (!deploymentId) return;
 
     let cancelled = false;
     let es: EventSource | null = null;
@@ -157,7 +156,7 @@ export function DeploymentLiveLogs({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [logs.length]);
 
-  if (!deploymentId || USE_MOCK) return null;
+  if (!deploymentId) return null;
 
   const active = status === "pending" || status === "planning" || status === "running";
 
