@@ -1,22 +1,23 @@
 /**
- * Grid feature flags — edit THIS file (not .env) to turn features on or off.
+ * Grid feature flags — edit THIS file (not .env) to turn console features on/off.
  *
- * Keep in sync with: grid-core/src/config/featureFlags.ts
- * (UI and API each have a copy; change both or the console will offer deploys
- * the API rejects.)
+ * This is the ONLY flag source. By design:
+ * - Console: hides targets with false flags and will not send those deploys.
+ * - grid-core API: accepts a correct deploy body regardless of these flags.
+ * - grid-cli: generate/apply from grid.json regardless of these flags
+ *   (module bank + cloud credentials decide success).
  *
  * ─────────────────────────────────────────────────────────────────────────
- * HOW TO TURN A DEPLOY ON (after you verified it works)
+ * HOW TO TURN A DEPLOY ON IN THE CONSOLE (after you verified it works)
  * ─────────────────────────────────────────────────────────────────────────
  *
  * Deploy flags are provider × resource type. Example: Azure VM.
  *
- * Find that provider under `deployFlags` below and flip the line from false
- * to true (sync both grid-core and grid-ui copies). Example:
+ * Find that provider under `deployFlags` below and flip the line:
  *
  *   "vm": true,  // was false
  *
- * Restart Vite (and grid-core for the API copy) after you save.
+ * Restart Vite after you save.
  *
  * Product pages (Topology, APM, …) use `productFlags` at the top — set true/false
  * there the same way.

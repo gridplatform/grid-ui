@@ -12,8 +12,23 @@
 // ─── Health & Status ────────────────────────────────────────────────────────
 
 export type HealthStatus = "healthy" | "warning" | "critical" | "unknown";
-export type ResourceStatus = "running" | "stopped" | "error" | "degraded" | "pending";
-export type DeploymentStatus = "pending" | "running" | "success" | "failed" | "cancelled";
+export type ResourceStatus =
+  | "running"
+  | "stopped"
+  | "error"
+  | "degraded"
+  | "pending"
+  | "destroyed"
+  /** Desired-state JSON removed from Git; awaiting explicit destroy */
+  | "stale";
+export type DeploymentStatus =
+  | "pending"
+  | "planning"
+  | "running"
+  | "success"
+  | "failed"
+  | "cancelled";
+export type LifecycleMode = "plan" | "apply" | "destroy";
 export type ReleaseStatus = "queued" | "pending_approval" | "approved" | "deploying" | "success" | "failed" | "rolled_back";
 export type AlertSeverity = "critical" | "warning" | "info";
 export type AlertStatus = "firing" | "acknowledged" | "resolved";
@@ -168,13 +183,20 @@ export interface Deployment {
   id: string;
   infrastructureId: string;
   status: DeploymentStatus;
+  mode?: LifecycleMode;
   progress?: number;
   startedAt: string;
   completedAt?: string;
   logs?: string[];
+  planSummary?: string;
   triggeredBy: string;
   gitCommit?: string;
   gitBranch?: string;
+  name?: string;
+  engine?: string;
+  resourceType?: string;
+  provider?: string;
+  environment?: string;
 }
 
 // ─── Release Types ──────────────────────────────────────────────────────────

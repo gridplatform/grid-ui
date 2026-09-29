@@ -11,6 +11,7 @@ import DeploymentsPage from "./pages/DeploymentsPage";
 import ReleasesPage from "./pages/ReleasesPage";
 import InfrastructurePage from "./pages/InfrastructurePage";
 import InfrastructureDetailPage from "./pages/InfrastructureDetailPage";
+import GitOpsPage from "./pages/GitOpsPage";
 import MonitoringPage from "./pages/MonitoringPage";
 import MonitoringDetailPage from "./pages/MonitoringDetailPage";
 import AlertsPage from "./pages/AlertsPage";
@@ -64,6 +65,7 @@ const App = () => (
                 </FeatureGate>
               }
             />
+            <Route path="/gitops" element={<GitOpsPage />} />
             <Route
               path="/monitoring"
               element={

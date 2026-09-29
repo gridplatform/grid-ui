@@ -55,6 +55,10 @@ export interface GridDeployRequest {
   resourceType: string;
   /** Engine-specific configuration object (validated by API/CLI). */
   config: Record<string, unknown>;
+  /** When set, update this infrastructure's desired state then plan/apply */
+  infrastructureId?: string;
+  /** plan = preview only; apply = converge (default) */
+  mode?: "plan" | "apply";
 }
 
 /** One deployable provider x resource type pair offered in the console. */

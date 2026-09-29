@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import AppShell from "@/components/AppShell";
 import {
@@ -7,6 +7,17 @@ import {
   Box, Timer, Layers, Shield, Container, HardDrive, Cpu,
 } from "lucide-react";
 import { mockResources, type Resource, type ResourceType } from "./InfrastructurePage";
+import {
+  useApplyInfrastructure,
+  useDestroyInfrastructure,
+  useDriftCheck,
+  useInfrastructure,
+  usePlanInfrastructure,
+  useUpdateInfrastructure,
+} from "@/hooks/useGridApi";
+import { DeploymentLiveLogs } from "@/components/DeploymentLiveLogs";
+
+const USE_MOCK = import.meta.env.VITE_USE_MOCK_DATA !== "false";
 
 const typeIcons: Record<ResourceType, React.ElementType> = {
   "single-vm": Monitor, "vm-cluster": Server, kubernetes: Cloud, network: Network, "managed-service": Database,
@@ -20,6 +31,8 @@ const statusColors: Record<string, string> = {
   stopped: "bg-muted text-muted-foreground",
   error: "bg-destructive/10 text-destructive",
   degraded: "bg-warning/10 text-warning",
+  pending: "bg-muted text-muted-foreground",
+  destroyed: "bg-destructive/10 text-destructive",
 };
 
 // ─── AI mock ─────────────────────────────────────────────────────────────────
@@ -82,17 +95,72 @@ const mockAiAnalyze = (resource: Resource): AiAnalysis => {
 const InfrastructureDetailPage = () => {
   const { resourceId } = useParams();
   const navigate = useNavigate();
-  const resource = mockResources.find((r) => r.id === resourceId);
+  const mockResource = mockResources.find((r) => r.id === resourceId);
+
+  const { data: liveInfra, isLoading: liveLoading } = useInfrastructure(resourceId || "");
+  const updateInfra = useUpdateInfrastructure();
+  const planInfra = usePlanInfrastructure();
+  const applyInfra = useApplyInfrastructure();
+  const destroyInfra = useDestroyInfrastructure();
+  const driftCheck = useDriftCheck();
+  const [driftReport, setDriftReport] = useState<{
+    hasDrift?: boolean;
+    kind?: string;
+    summary?: string;
+    changes?: string[];
+    actions?: { applyGitDesired?: string; updateGitToMatchLive?: string };
+  } | null>(null);
+
+  const liveAsResource: Resource | null =
+    !USE_MOCK && liveInfra
+      ? {
+          id: liveInfra.id,
+          name: liveInfra.name,
+          type: "single-vm",
+          status:
+            liveInfra.status === "running" ||
+            liveInfra.status === "error" ||
+            liveInfra.status === "degraded"
+              ? liveInfra.status
+              : "stopped",
+          region: String((liveInfra.configJson as { region?: string }).region || "—"),
+          environment: liveInfra.environment,
+          provider: liveInfra.provider,
+          ip: "—",
+          cpu: "—",
+          memory: "—",
+          connections: [],
+          config: liveInfra.configJson,
+        }
+      : null;
+
+  const resource = USE_MOCK ? mockResource : liveAsResource || mockResource;
 
   const [activeTab, setActiveTab] = useState<"details" | "ai">("details");
   const [editMode, setEditMode] = useState(false);
   const [editedJson, setEditedJson] = useState("");
+  const [actionNote, setActionNote] = useState<string | null>(null);
+  const [watchingId, setWatchingId] = useState<string | null>(null);
 
   // AI state
   const [aiLoading, setAiLoading] = useState(false);
   const [aiResult, setAiResult] = useState<AiAnalysis | null>(null);
   const [aiEdited, setAiEdited] = useState("");
   const [aiApprovalStatus, setAiApprovalStatus] = useState<"pending" | "approved" | "rejected" | null>(null);
+
+  useEffect(() => {
+    if (resource && !editMode) {
+      setEditedJson(JSON.stringify(resource.config, null, 2));
+    }
+  }, [resource?.id, resource?.config, editMode]);
+
+  if (!USE_MOCK && liveLoading && !mockResource) {
+    return (
+      <AppShell activeTab="infrastructure">
+        <div className="p-6 text-center text-muted-foreground">Loading…</div>
+      </AppShell>
+    );
+  }
 
   if (!resource) {
     return (
@@ -103,10 +171,71 @@ const InfrastructureDetailPage = () => {
   }
 
   const TypeIcon = typeIcons[resource.type];
+  const isLive = !USE_MOCK && !!liveInfra;
 
   const startEdit = () => {
     setEditedJson(JSON.stringify(resource.config, null, 2));
     setEditMode(true);
+  };
+
+  const saveConfig = async () => {
+    try {
+      const parsed = JSON.parse(editedJson) as Record<string, unknown>;
+      if (isLive && resourceId) {
+        await updateInfra.mutateAsync({ id: resourceId, configJson: parsed });
+        setActionNote("Desired state saved. Run Plan to preview, Apply to converge.");
+      }
+      setEditMode(false);
+    } catch {
+      setActionNote("Invalid JSON — fix before saving.");
+    }
+  };
+
+  const runPlan = async () => {
+    if (!resourceId || !isLive) return;
+    try {
+      const d = await planInfra.mutateAsync(resourceId);
+      setWatchingId(d.id);
+      setActionNote(`Plan started: ${d.id}`);
+    } catch (e) {
+      setActionNote(e instanceof Error ? e.message : "Plan failed");
+    }
+  };
+
+  const runApply = async () => {
+    if (!resourceId || !isLive) return;
+    try {
+      const d = await applyInfra.mutateAsync(resourceId);
+      setWatchingId(d.id);
+      setActionNote(`Apply started: ${d.id}`);
+    } catch (e) {
+      setActionNote(e instanceof Error ? e.message : "Apply failed");
+    }
+  };
+
+  const runDestroy = async () => {
+    if (!resourceId || !isLive) return;
+    if (!window.confirm("Destroy all cloud resources for this infrastructure? This cannot be undone.")) {
+      return;
+    }
+    try {
+      const d = await destroyInfra.mutateAsync(resourceId);
+      setWatchingId(d.id);
+      setActionNote(`Destroy started: ${d.id}`);
+    } catch (e) {
+      setActionNote(e instanceof Error ? e.message : "Destroy failed");
+    }
+  };
+
+  const runDrift = async () => {
+    if (!resourceId || !isLive) return;
+    try {
+      const report = await driftCheck.mutateAsync(resourceId);
+      setDriftReport(report);
+      setActionNote(report.summary);
+    } catch (e) {
+      setActionNote(e instanceof Error ? e.message : "Drift check failed");
+    }
   };
 
   const runAiAnalysis = () => {
@@ -137,7 +266,7 @@ const InfrastructureDetailPage = () => {
         </button>
 
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
             <TypeIcon className="w-6 h-6 text-muted-foreground" />
             <div>
@@ -146,20 +275,94 @@ const InfrastructureDetailPage = () => {
                 {resource.type} · {resource.region} · {resource.environment} · {resource.provider}
               </p>
             </div>
-            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusColors[resource.status]}`}>
-              {resource.status}
+            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusColors[resource.status] || statusColors.pending}`}>
+              {liveInfra?.status === "destroyed" ? "destroyed" : resource.status}
             </span>
           </div>
-          {hasIssue && (
-            <button
-              onClick={() => { setActiveTab("ai"); runAiAnalysis(); }}
-              className="px-3 py-1.5 text-sm bg-warning text-primary-foreground rounded-md hover:opacity-90 transition-opacity flex items-center gap-1.5"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              Diagnose with AI
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {isLive && liveInfra?.status !== "destroyed" && (
+              <>
+                <button
+                  onClick={() => void runDrift()}
+                  disabled={driftCheck.isPending}
+                  className="px-3 py-1.5 text-sm border border-border rounded-md hover:bg-secondary transition-colors disabled:opacity-50"
+                >
+                  Check drift
+                </button>
+                <button
+                  onClick={() => void runPlan()}
+                  disabled={planInfra.isPending}
+                  className="px-3 py-1.5 text-sm border border-border rounded-md hover:bg-secondary transition-colors disabled:opacity-50"
+                >
+                  Plan
+                </button>
+                <button
+                  onClick={() => void runApply()}
+                  disabled={applyInfra.isPending}
+                  className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 disabled:opacity-50"
+                >
+                  Apply
+                </button>
+                <button
+                  onClick={() => void runDestroy()}
+                  disabled={destroyInfra.isPending}
+                  className="px-3 py-1.5 text-sm border border-destructive/40 text-destructive rounded-md hover:bg-destructive/10 disabled:opacity-50"
+                >
+                  Destroy
+                </button>
+              </>
+            )}
+            {hasIssue && (
+              <button
+                onClick={() => { setActiveTab("ai"); runAiAnalysis(); }}
+                className="px-3 py-1.5 text-sm bg-warning text-primary-foreground rounded-md hover:opacity-90 transition-opacity flex items-center gap-1.5"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                Diagnose with AI
+              </button>
+            )}
+          </div>
         </div>
+
+        {actionNote && (
+          <div className="rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
+            {actionNote}
+          </div>
+        )}
+
+        {watchingId && (
+          <DeploymentLiveLogs
+            deploymentId={watchingId}
+            title="Live CLI / Terraform output"
+          />
+        )}
+
+        {driftReport && (
+          <div className="rounded-lg border border-border bg-card p-4 text-xs space-y-2">
+            <p className="text-sm font-medium text-foreground">
+              Drift: {driftReport.kind}
+              {driftReport.hasDrift ? " · changes detected" : " · in sync"}
+            </p>
+            <p className="text-muted-foreground">{driftReport.summary}</p>
+            {driftReport.changes?.slice(0, 12).map((c, i) => (
+              <p key={i} className="font-mono text-muted-foreground">
+                {c}
+              </p>
+            ))}
+            {driftReport.actions && (
+              <div className="pt-2 space-y-1 text-muted-foreground border-t border-border">
+                <p>
+                  <span className="text-foreground">Match Git → live:</span>{" "}
+                  {driftReport.actions.applyGitDesired}
+                </p>
+                <p>
+                  <span className="text-foreground">Keep live → update Git:</span>{" "}
+                  {driftReport.actions.updateGitToMatchLive}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="flex items-center gap-0 border-b border-border -mb-px">
@@ -224,16 +427,26 @@ const InfrastructureDetailPage = () => {
             {/* JSON Config */}
             <div className="rounded-lg border border-border bg-card p-4">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-medium text-foreground">Configuration</h3>
+                <h3 className="text-sm font-medium text-foreground">Desired state (JSON)</h3>
                 {editMode ? (
                   <div className="flex items-center gap-2">
                     <button onClick={() => setEditMode(false)} className="px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground border border-border rounded-md transition-colors">Cancel</button>
-                    <button onClick={() => setEditMode(false)} className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity flex items-center gap-1.5">
+                    <button
+                      onClick={() => void saveConfig()}
+                      disabled={updateInfra.isPending}
+                      className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity flex items-center gap-1.5 disabled:opacity-50"
+                    >
                       <Save className="w-3.5 h-3.5" />Save
                     </button>
                   </div>
                 ) : (
-                  <button onClick={startEdit} className="px-3 py-1.5 text-sm text-foreground border border-border rounded-md hover:bg-secondary transition-colors">Edit</button>
+                  <button
+                    onClick={startEdit}
+                    disabled={liveInfra?.status === "destroyed"}
+                    className="px-3 py-1.5 text-sm text-foreground border border-border rounded-md hover:bg-secondary transition-colors disabled:opacity-50"
+                  >
+                    Edit
+                  </button>
                 )}
               </div>
               {editMode ? (

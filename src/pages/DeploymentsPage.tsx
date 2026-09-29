@@ -43,11 +43,18 @@ import {
   enabledTerraformCategories,
   isDeployEnabled,
 } from "@/config/features";
+import { useCreateDeployment, useDeployments } from "@/hooks/useGridApi";
+import type { Deployment as ApiDeployment } from "@/types/api";
+import { useNavigate } from "react-router-dom";
+import { DeploymentLiveLogs } from "@/components/DeploymentLiveLogs";
 
-type DeploymentStatus = "queued" | "planning" | "running" | "success" | "failed";
+const USE_MOCK = import.meta.env.VITE_USE_MOCK_DATA !== "false";
+
+type DeploymentStatus = "queued" | "pending" | "planning" | "running" | "success" | "failed";
 
 interface DeploymentRow {
   id: string;
+  infrastructureId?: string;
   name: string;
   engine: DeployEngine;
   category: string;
@@ -55,6 +62,7 @@ interface DeploymentRow {
   moduleOrKind: string;
   environment: string;
   status: DeploymentStatus;
+  mode?: string;
   createdBy: string;
   createdAt: string;
   details: string;
@@ -62,6 +70,7 @@ interface DeploymentRow {
 
 const statusConfig: Record<DeploymentStatus, { label: string; color: string; icon: React.ElementType }> = {
   queued: { label: "Queued", color: "bg-muted text-muted-foreground", icon: Clock },
+  pending: { label: "Pending", color: "bg-muted text-muted-foreground", icon: Clock },
   planning: { label: "Planning", color: "bg-info/10 text-info", icon: Loader2 },
   running: { label: "Running", color: "bg-blue-500/10 text-blue-400", icon: Loader2 },
   success: { label: "Success", color: "bg-success/10 text-success", icon: CheckCircle2 },
@@ -335,7 +344,36 @@ const k8sTemplates: Record<KubernetesWorkloadKind, string> = {
 
 const targetKey = (target: TerraformTarget) => `${target.provider}.${target.resourceType}`;
 
+function mapApiDeployment(d: ApiDeployment): DeploymentRow {
+  const status = (d.status === "cancelled" ? "failed" : d.status) as DeploymentStatus;
+  const relative = d.startedAt
+    ? new Date(d.startedAt).toLocaleString()
+    : "";
+  return {
+    id: d.id,
+    infrastructureId: d.infrastructureId,
+    name: d.name || d.infrastructureId.slice(0, 8),
+    engine: (d.engine as DeployEngine) || "terraform",
+    category: "other",
+    provider: d.provider || "—",
+    moduleOrKind: d.resourceType || d.mode || "—",
+    environment: d.environment || "—",
+    status: status in statusConfig ? status : "pending",
+    mode: d.mode,
+    createdBy: d.triggeredBy,
+    createdAt: relative,
+    details: [
+      d.mode ? `mode=${d.mode}` : null,
+      d.progress != null ? `${d.progress}%` : null,
+      d.infrastructureId ? `infra ${d.infrastructureId.slice(0, 8)}` : null,
+    ]
+      .filter(Boolean)
+      .join(" · "),
+  };
+}
+
 const DeploymentsPage = () => {
+  const navigate = useNavigate();
   const visibleCategories = useMemo(() => {
     const enabled = new Set(enabledTerraformCategories());
     return TERRAFORM_CATEGORIES.filter((c) => enabled.has(c.id));
@@ -348,6 +386,11 @@ const DeploymentsPage = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createJson, setCreateJson] = useState("");
   const [submitNote, setSubmitNote] = useState<string | null>(null);
+  const [submitMode, setSubmitMode] = useState<"plan" | "apply">("apply");
+  const [watchingId, setWatchingId] = useState<string | null>(null);
+
+  const createDeployment = useCreateDeployment();
+  const { data: liveDeployments, isLoading: liveLoading, error: liveError } = useDeployments();
 
   // Only provider x resource type pairs that are switched on can be picked.
   const categoryTargets = useMemo(() => enabledTargetsForCategory(tfCategory), [tfCategory]);
@@ -356,12 +399,19 @@ const DeploymentsPage = () => {
   const activeTarget =
     categoryTargets.find((t) => targetKey(t) === selectedTarget) ?? categoryTargets[0] ?? null;
 
-  const filtered = mockDeployments.filter((d) => {
-    if (d.engine === "terraform" && !isDeployEnabled(d.provider, d.moduleOrKind)) return false;
-    if (d.engine !== engine) return false;
-    if (engine === "terraform") return d.category === tfCategory;
-    return d.category === k8sKind;
-  });
+  const liveRows = useMemo(
+    () => (liveDeployments || []).map(mapApiDeployment).reverse(),
+    [liveDeployments]
+  );
+
+  const filtered = USE_MOCK
+    ? mockDeployments.filter((d) => {
+        if (d.engine === "terraform" && !isDeployEnabled(d.provider, d.moduleOrKind)) return false;
+        if (d.engine !== engine) return false;
+        if (engine === "terraform") return d.category === tfCategory;
+        return d.category === k8sKind;
+      })
+    : liveRows.filter((d) => d.engine === engine);
 
   const openCreate = (target?: TerraformTarget) => {
     setSubmitNote(null);
@@ -389,7 +439,7 @@ const DeploymentsPage = () => {
     setShowCreateModal(true);
   };
 
-  const handleDeploy = () => {
+  const handleDeploy = async (mode: "plan" | "apply") => {
     try {
       const parsed = JSON.parse(createJson) as GridDeployRequest;
       if (!parsed.engine || !parsed.name || !parsed.resourceType) {
@@ -402,13 +452,28 @@ const DeploymentsPage = () => {
         );
         return;
       }
-      // CLI / API injection point — replace with useCreateDeployment when backend is live.
+      if (parsed.engine === "kubernetes") {
+        setSubmitNote("Kubernetes apply is not implemented yet (API returns 501). Use terraform for infrastructure.");
+        return;
+      }
+
+      if (USE_MOCK) {
+        setSubmitNote(
+          `Mock mode: would ${mode} ${parsed.name} · ${parsed.resourceType}. Set VITE_USE_MOCK_DATA=false for live API.`,
+        );
+        setShowCreateModal(false);
+        return;
+      }
+
+      setSubmitMode(mode);
+      const result = await createDeployment.mutateAsync({ ...parsed, mode });
+      setWatchingId(result.id);
       setSubmitNote(
-        `Queued for Grid CLI (${parsed.engine}): ${parsed.name} · ${parsed.resourceType}. Wire POST /api/v1/deployments next.`,
+        `${mode === "plan" ? "Plan" : "Apply"} started: ${result.id} · infra ${result.infrastructureId.slice(0, 8)}…`,
       );
       setShowCreateModal(false);
-    } catch {
-      setSubmitNote("Invalid JSON — fix the configuration before deploying.");
+    } catch (err) {
+      setSubmitNote(err instanceof Error ? err.message : "Deploy request failed.");
     }
   };
 
@@ -419,7 +484,7 @@ const DeploymentsPage = () => {
           <div>
             <h1 className="text-lg font-semibold text-foreground">Deployments</h1>
             <p className="text-xs text-muted-foreground mt-1">
-              Deploy infrastructure across clouds from one place.
+              Desired-state JSON → plan (preview) → apply (converge) → destroy.
             </p>
           </div>
           <button
@@ -434,6 +499,19 @@ const DeploymentsPage = () => {
         {submitNote && (
           <div className="rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
             {submitNote}
+          </div>
+        )}
+
+        {watchingId && (
+          <DeploymentLiveLogs
+            deploymentId={watchingId}
+            title="Live CLI / Terraform output"
+          />
+        )}
+
+        {!USE_MOCK && liveError && (
+          <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            {liveError instanceof Error ? liveError.message : "Failed to load deployments"}
           </div>
         )}
 
@@ -535,21 +613,30 @@ const DeploymentsPage = () => {
                 ? TERRAFORM_CATEGORIES.find((c) => c.id === tfCategory)?.label
                 : KUBERNETES_KINDS.find((k) => k.id === k8sKind)?.label}
             </h2>
-            <span className="text-xs text-muted-foreground">{filtered.length} deployments</span>
+            <span className="text-xs text-muted-foreground">
+              {!USE_MOCK && liveLoading ? "loading…" : `${filtered.length} deployments`}
+            </span>
           </div>
 
           {filtered.length === 0 ? (
             <div className="p-8 text-center text-sm text-muted-foreground">
-              No deployments in this category yet. Create one to send JSON to the Grid CLI backend.
+              {USE_MOCK
+                ? "No deployments in this category yet."
+                : "No deployments yet. Plan or apply to create infrastructure from JSON."}
             </div>
           ) : (
             <div className="divide-y divide-border">
               {filtered.map((dep) => {
-                const sc = statusConfig[dep.status];
+                const sc = statusConfig[dep.status] ?? statusConfig.pending;
                 const StatusIcon = sc.icon;
                 return (
                   <div
                     key={dep.id}
+                    onClick={() => {
+                      if (!USE_MOCK && dep.infrastructureId) {
+                        navigate(`/infrastructure/${dep.infrastructureId}`);
+                      }
+                    }}
                     className="flex items-center px-4 py-3 hover:bg-secondary/50 cursor-pointer transition-colors"
                   >
                     <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -564,6 +651,11 @@ const DeploymentsPage = () => {
                           <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
                             {dep.engine}
                           </span>
+                          {dep.mode && (
+                            <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
+                              {dep.mode}
+                            </span>
+                          )}
                           <span className="text-xs text-muted-foreground font-mono">{dep.moduleOrKind}</span>
                         </div>
                         <p className="text-xs text-muted-foreground">{dep.details}</p>
@@ -616,8 +708,8 @@ const DeploymentsPage = () => {
               </div>
               <p className="text-xs text-muted-foreground">
                 {engine === "terraform"
-                  ? "Grid CLI will generate and apply Terraform from the module bank."
-                  : "Applies into a cluster that already exists."}
+                  ? "Plan previews create/change/destroy. Apply converges desired state to the cloud."
+                  : "Kubernetes apply is not implemented yet."}
               </p>
             </div>
             <div className="p-4 border-t border-border flex justify-end gap-2">
@@ -628,10 +720,18 @@ const DeploymentsPage = () => {
                 Cancel
               </button>
               <button
-                onClick={handleDeploy}
-                className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity"
+                onClick={() => void handleDeploy("plan")}
+                disabled={createDeployment.isPending}
+                className="px-3 py-1.5 text-sm border border-border text-foreground rounded-md hover:bg-secondary transition-colors disabled:opacity-50"
               >
-                Deploy
+                Plan
+              </button>
+              <button
+                onClick={() => void handleDeploy("apply")}
+                disabled={createDeployment.isPending}
+                className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity disabled:opacity-50"
+              >
+                {createDeployment.isPending && submitMode === "apply" ? "Applying…" : "Apply"}
               </button>
             </div>
           </div>

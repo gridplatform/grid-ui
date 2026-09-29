@@ -136,15 +136,89 @@ export function useInfrastructure(id: string) {
 }
 
 /**
- * Deploy infrastructure
+ * Deploy infrastructure (legacy alias → apply)
  * POST /api/v1/infrastructures/:id/deploy
  */
 export function useDeployInfrastructure() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
-    mutationFn: (id: string) => 
-      gridFetch<Deployment>(`/infrastructures/${id}/deploy`, { method: "POST" }),
+    mutationFn: (id: string) =>
+      gridFetch<Deployment>(`/infrastructures/${id}/apply`, { method: "POST" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["infrastructures"] });
+      queryClient.invalidateQueries({ queryKey: ["deployments"] });
+    },
+  });
+}
+
+/**
+ * PATCH /api/v1/infrastructures/:id — update desired-state JSON
+ */
+export function useUpdateInfrastructure() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      id,
+      ...body
+    }: {
+      id: string;
+      name?: string;
+      environment?: string;
+      configJson?: Record<string, unknown>;
+    }) =>
+      gridFetch<Infrastructure>(`/infrastructures/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["infrastructures"] });
+      queryClient.invalidateQueries({ queryKey: ["infrastructures", vars.id] });
+    },
+  });
+}
+
+/**
+ * POST /api/v1/infrastructures/:id/plan
+ */
+export function usePlanInfrastructure() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) =>
+      gridFetch<Deployment>(`/infrastructures/${id}/plan`, { method: "POST" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["deployments"] });
+    },
+  });
+}
+
+/**
+ * POST /api/v1/infrastructures/:id/apply
+ */
+export function useApplyInfrastructure() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) =>
+      gridFetch<Deployment>(`/infrastructures/${id}/apply`, { method: "POST" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["infrastructures"] });
+      queryClient.invalidateQueries({ queryKey: ["deployments"] });
+    },
+  });
+}
+
+/**
+ * POST /api/v1/infrastructures/:id/destroy — real terraform destroy
+ */
+export function useDestroyInfrastructure() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) =>
+      gridFetch<Deployment>(`/infrastructures/${id}/destroy`, { method: "POST" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["infrastructures"] });
       queryClient.invalidateQueries({ queryKey: ["deployments"] });
@@ -159,7 +233,87 @@ export function useDeployInfrastructure() {
 export function useDriftCheck() {
   return useMutation({
     mutationFn: (id: string) =>
-      gridFetch<{ hasDrift: boolean; changes: string[] }>(`/infrastructures/${id}/drift-check`, { method: "POST" }),
+      gridFetch<{
+        infrastructureId: string;
+        kind: string;
+        hasDrift: boolean;
+        gitChangedSinceApply: boolean;
+        summary: string;
+        changes: string[];
+        planExcerpt?: string;
+        actions: { applyGitDesired: string; updateGitToMatchLive: string };
+        checkedAt: string;
+      }>(`/infrastructures/${id}/drift-check`, { method: "POST" }),
+  });
+}
+
+export type GitOpsSettings = {
+  repoUrl: string;
+  branch: string;
+  pathPrefix: string;
+  syncIntervalSec: number;
+  enabled: boolean;
+  updatedAt?: string;
+};
+
+export function useGitOpsStatus() {
+  return useQuery({
+    queryKey: ["gitops", "status"],
+    queryFn: () =>
+      gridFetch<{
+        settings: GitOpsSettings | null;
+        syncStatus: string;
+        lastSyncAt?: string;
+        lastSyncError?: string;
+        lastCommit?: string;
+        lastCommitMessage?: string;
+        trackedCount: number;
+        infrastructures: Array<{
+          id: string;
+          name: string;
+          gitPath?: string;
+          gitCommit?: string;
+          gitContentHash?: string;
+          lastAppliedHash?: string;
+          status: string;
+          desiredAhead: boolean;
+        }>;
+      }>("/gitops/status"),
+    enabled: !USE_MOCK_DATA,
+    refetchInterval: 15_000,
+  });
+}
+
+export function useSaveGitOpsSettings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Omit<GitOpsSettings, "updatedAt">) =>
+      gridFetch<GitOpsSettings>("/gitops/settings", {
+        method: "PUT",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["gitops"] });
+    },
+  });
+}
+
+export function useSyncGitOps() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      gridFetch<{
+        synced: number;
+        created: string[];
+        updated: string[];
+        unchanged: string[];
+        commit?: string;
+        commitMessage?: string;
+      }>("/gitops/sync", { method: "POST" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["gitops"] });
+      queryClient.invalidateQueries({ queryKey: ["infrastructures"] });
+    },
   });
 }
 
@@ -193,6 +347,14 @@ export function useDeployments() {
     queryKey: ["deployments"],
     queryFn: () => gridFetch<Deployment[]>("/deployments"),
     enabled: !USE_MOCK_DATA,
+    refetchInterval: (query) => {
+      const rows = query.state.data;
+      if (!rows?.length) return false;
+      const active = rows.some(
+        (d) => d.status === "pending" || d.status === "planning" || d.status === "running"
+      );
+      return active ? 2000 : false;
+    },
   });
 }
 
@@ -215,6 +377,31 @@ export function useCreateDeployment() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["deployments"] });
+      queryClient.invalidateQueries({ queryKey: ["infrastructures"] });
+    },
+  });
+}
+
+/**
+ * Fetch deployment logs
+ * GET /api/v1/deployments/:id/logs
+ */
+export function useDeploymentLogs(id: string) {
+  return useQuery({
+    queryKey: ["deployments", id, "logs"],
+    queryFn: () =>
+      gridFetch<{
+        deploymentId: string;
+        logs: string[];
+        planSummary?: string;
+        status?: string;
+        progress?: number;
+      }>(`/deployments/${id}/logs`),
+    enabled: !USE_MOCK_DATA && !!id,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      if (status === "success" || status === "failed" || status === "cancelled") return false;
+      return 1500;
     },
   });
 }

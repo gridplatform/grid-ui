@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
 import { useBranding } from "@/contexts/BrandingContext";
+import { GridLogo } from "@/components/GridLogo";
 
 const LoginPage = () => {
   const { customLogoUrl, orgName } = useBranding();
@@ -9,7 +10,6 @@ const LoginPage = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [region] = useState("US1");
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,9 +28,7 @@ const LoginPage = () => {
             {customLogoUrl ? (
               <img src={customLogoUrl} alt={orgName} className="w-10 h-10 rounded-lg object-contain" />
             ) : (
-              <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center">
-                <span className="text-primary-foreground text-lg font-bold">G</span>
-              </div>
+              <GridLogo className="w-10 h-10" alt={orgName} />
             )}
             <span className="text-foreground text-2xl font-semibold tracking-tight">{orgName}</span>
           </div>
@@ -71,9 +69,7 @@ const LoginPage = () => {
             {customLogoUrl ? (
               <img src={customLogoUrl} alt={orgName} className="w-8 h-8 rounded-lg object-contain" />
             ) : (
-              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-                <span className="text-primary-foreground text-sm font-bold">G</span>
-              </div>
+              <GridLogo className="w-8 h-8" alt={orgName} />
             )}
             <span className="text-foreground text-xl font-semibold">{orgName}</span>
           </div>
@@ -83,15 +79,6 @@ const LoginPage = () => {
             New user?{" "}
             <button className="text-primary hover:underline">Sign up for free</button>
           </p>
-
-          {/* Region Selector */}
-          <div className="mb-6">
-            <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-secondary border border-border text-sm">
-              <span className="text-muted-foreground">Region:</span>
-              <span className="text-foreground font-medium">{region}</span>
-              <ChevronIcon className="w-3.5 h-3.5 text-muted-foreground ml-auto" />
-            </div>
-          </div>
 
           {/* Google Sign In */}
           <button className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-md border border-border bg-secondary text-foreground text-sm font-medium hover:bg-accent transition-colors mb-3">
@@ -164,12 +151,6 @@ const LoginPage = () => {
     </div>
   );
 };
-
-const ChevronIcon = ({ className }: { className?: string }) => (
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className={className}>
-    <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
-  </svg>
-);
 
 const GoogleIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none">

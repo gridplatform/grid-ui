@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { Search, ChevronDown, LogOut, Settings, User } from "lucide-react";
 import { useBranding } from "@/contexts/BrandingContext";
 import { productFlags, type FeatureKey } from "@/config/features";
+import { GridLogo } from "@/components/GridLogo";
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -20,6 +21,7 @@ const teams = [
 const projects = [
   { id: "prod", name: "production", env: "Production" },
   { id: "staging", name: "staging", env: "Staging" },
+  { id: "sandbox", name: "sandbox", env: "Sandbox" },
   { id: "dev", name: "development", env: "Development" },
 ];
 
@@ -46,6 +48,7 @@ const AppShell = ({ children, activeTab = "overview", isAdmin = true }: AppShell
     { id: "deployments", label: "Deployments", path: "/deployments", feature: "deployments" },
     { id: "releases", label: "Releases", path: "/releases", feature: "releases" },
     { id: "infrastructure", label: "Infrastructure", path: "/infrastructure", feature: "infrastructure" },
+    { id: "gitops", label: "GitOps", path: "/gitops" },
     { id: "monitoring", label: "Monitoring", path: "/monitoring", feature: "monitoring" },
     { id: "alerts", label: "Alerts", path: "/alerts", feature: "alerts" },
     { id: "apm", label: "APM", path: "/apm", feature: "apm" },
@@ -77,9 +80,7 @@ const AppShell = ({ children, activeTab = "overview", isAdmin = true }: AppShell
               {customLogoUrl ? (
                 <img src={customLogoUrl} alt={orgName} className="w-6 h-6 rounded object-contain" />
               ) : (
-                <div className="w-6 h-6 rounded bg-primary flex items-center justify-center">
-                  <span className="text-primary-foreground text-xs font-bold">G</span>
-                </div>
+                <GridLogo className="w-6 h-6" alt={orgName} />
               )}
               <span>{orgName}</span>
             </button>
