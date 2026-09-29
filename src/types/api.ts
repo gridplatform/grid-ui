@@ -29,7 +29,15 @@ export type DeploymentStatus =
   | "failed"
   | "cancelled";
 export type LifecycleMode = "plan" | "apply" | "destroy";
-export type ReleaseStatus = "queued" | "pending_approval" | "approved" | "deploying" | "success" | "failed" | "rolled_back";
+export type ReleaseStatus =
+  | "queued"
+  | "pending_approval"
+  | "approved"
+  | "deploying"
+  | "success"
+  | "failed"
+  | "cancelled"
+  | "rolled_back";
 export type ReleaseMode = "plan" | "apply" | "destroy" | "custom";
 export type AlertSeverity = "critical" | "warning" | "info";
 export type AlertStatus = "firing" | "acknowledged" | "resolved";
@@ -620,6 +628,20 @@ export interface ApiError {
   code: string;
   message: string;
   details?: Record<string, unknown>;
+}
+
+export interface AuditEvent {
+  id: string;
+  at: string;
+  action: string;
+  actor: string;
+  actorRole?: string;
+  resourceType?: string;
+  resourceId?: string;
+  resourceName?: string;
+  summary: string;
+  details?: Record<string, unknown>;
+  outcome: "success" | "failure" | "denied";
 }
 
 // ─── WebSocket Event Types ──────────────────────────────────────────────────

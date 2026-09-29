@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { getAuthToken } from "@/lib/authStorage";
 
 const API_BASE_URL = import.meta.env.VITE_GRID_API_URL || "/api/v1";
@@ -29,9 +29,16 @@ function isTerminal(status: LiveStatus | undefined): boolean {
   return status === "success" || status === "failed" || status === "cancelled";
 }
 
+function nearBottom(el: HTMLElement, px = 80): boolean {
+  return el.scrollHeight - el.scrollTop - el.clientHeight <= px;
+}
+
 /**
  * Streams CLI/terraform output for a deployment.
  * Uses authenticated fetch (EventSource cannot send Bearer tokens).
+ *
+ * Auto-scroll stays inside the log panel (does not jump the page).
+ * If you scroll up to read, stickiness pauses until you return near the bottom.
  */
 export function DeploymentLiveLogs({
   deploymentId,
@@ -44,7 +51,8 @@ export function DeploymentLiveLogs({
   const [planSummary, setPlanSummary] = useState<string | undefined>();
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const [stickToBottom, setStickToBottom] = useState(true);
+  const logPaneRef = useRef<HTMLPreElement>(null);
 
   useEffect(() => {
     if (!deploymentId) return;
@@ -59,6 +67,7 @@ export function DeploymentLiveLogs({
     setPlanSummary(undefined);
     setError(null);
     setConnected(false);
+    setStickToBottom(true);
 
     const applySnapshot = (data: LogPayload) => {
       if (data.logs) setLogs(data.logs);
@@ -102,7 +111,6 @@ export function DeploymentLiveLogs({
       pollTimer = setInterval(() => void tick(), 1000);
     };
 
-    /** Authenticated SSE via fetch — EventSource cannot send Authorization. */
     const startStream = async () => {
       try {
         const res = await fetch(`${API_BASE_URL}/deployments/${deploymentId}/logs/stream`, {
@@ -146,9 +154,7 @@ export function DeploymentLiveLogs({
               const data = JSON.parse(dataLines.join("\n")) as LogPayload & {
                 message?: string;
               };
-              if (event === "snapshot" || event === "done") {
-                applySnapshot(data);
-              } else if (event === "log") {
+              if (event === "snapshot" || event === "done" || event === "log") {
                 applySnapshot(data);
               } else if (event === "ping") {
                 if (data.status) setStatus(data.status);
@@ -166,7 +172,6 @@ export function DeploymentLiveLogs({
           }
         }
 
-        // Stream ended without done — finish via one-shot poll.
         if (!cancelled) startPolling();
       } catch (e) {
         if (cancelled || (e instanceof DOMException && e.name === "AbortError")) return;
@@ -175,7 +180,6 @@ export function DeploymentLiveLogs({
       }
     };
 
-    // Immediate snapshot so finished releases show logs without waiting on SSE.
     void (async () => {
       try {
         const data = await fetchLogsOnce();
@@ -202,33 +206,104 @@ export function DeploymentLiveLogs({
     };
   }, [deploymentId]);
 
+  // Scroll only the log pane — never scrollIntoView (that jumps the page).
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [logs.length]);
+    const pane = logPaneRef.current;
+    if (!pane || !stickToBottom) return;
+    pane.scrollTop = pane.scrollHeight;
+  }, [logs.length, stickToBottom, status]);
+
+  // On terminal status, snap to bottom once so the final lines + Done banner are visible in-pane.
+  useEffect(() => {
+    if (!isTerminal(status)) return;
+    setStickToBottom(true);
+    const pane = logPaneRef.current;
+    if (pane) pane.scrollTop = pane.scrollHeight;
+  }, [status]);
 
   if (!deploymentId) return null;
 
   const active = status === "pending" || status === "planning" || status === "running";
+  const doneOk = status === "success";
+  const doneBad = status === "failed" || status === "cancelled";
+  const displayProgress = isTerminal(status) ? 100 : progress;
 
   return (
     <div className={`rounded-lg border border-border bg-card overflow-hidden ${className}`}>
       <div className="px-4 py-2 border-b border-border flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2 min-w-0">
-          {active ? <Loader2 className="w-3.5 h-3.5 animate-spin text-info" /> : null}
+          {active ? <Loader2 className="w-3.5 h-3.5 animate-spin text-info shrink-0" /> : null}
+          {doneOk ? <CheckCircle2 className="w-3.5 h-3.5 text-success shrink-0" /> : null}
+          {doneBad ? <XCircle className="w-3.5 h-3.5 text-destructive shrink-0" /> : null}
           <h3 className="text-sm font-medium text-foreground truncate">{title}</h3>
-          <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
-            {status}
+          <span
+            className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${
+              doneOk
+                ? "bg-success/15 text-success"
+                : doneBad
+                  ? "bg-destructive/15 text-destructive"
+                  : "bg-secondary text-muted-foreground"
+            }`}
+          >
+            {isTerminal(status) ? (doneOk ? "done" : status) : status}
           </span>
-          {progress != null && (
-            <span className="text-xs text-muted-foreground font-mono">{progress}%</span>
+          {displayProgress != null && (
+            <span className="text-xs text-muted-foreground font-mono">{displayProgress}%</span>
           )}
         </div>
-        <span className="text-[10px] text-muted-foreground">
-          {connected ? "live" : "connecting…"}
-          {error ? ` · ${error}` : ""}
-        </span>
+        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+          {!stickToBottom && active && (
+            <button
+              type="button"
+              onClick={() => {
+                setStickToBottom(true);
+                const pane = logPaneRef.current;
+                if (pane) pane.scrollTop = pane.scrollHeight;
+              }}
+              className="px-1.5 py-0.5 rounded border border-border hover:bg-secondary"
+            >
+              Jump to latest
+            </button>
+          )}
+          <span>
+            {isTerminal(status) ? "finished" : connected ? "live" : "connecting…"}
+            {error ? ` · ${error}` : ""}
+          </span>
+        </div>
       </div>
-      <pre className="h-56 overflow-auto bg-background p-3 text-[11px] leading-relaxed font-mono text-muted-foreground whitespace-pre-wrap">
+
+      {isTerminal(status) && (
+        <div
+          className={`px-4 py-2 text-xs border-b border-border flex items-center gap-2 ${
+            doneOk
+              ? "bg-success/10 text-success"
+              : "bg-destructive/10 text-destructive"
+          }`}
+        >
+          {doneOk ? (
+            <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+          ) : (
+            <XCircle className="w-3.5 h-3.5 shrink-0" />
+          )}
+          <span className="font-medium">
+            {doneOk
+              ? "Terraform / CLI finished successfully — you’re done."
+              : status === "cancelled"
+                ? "Run cancelled."
+                : "Terraform / CLI finished with errors — see logs above."}
+          </span>
+        </div>
+      )}
+
+      <pre
+        ref={logPaneRef}
+        onScroll={() => {
+          const pane = logPaneRef.current;
+          if (!pane) return;
+          setStickToBottom(nearBottom(pane));
+        }}
+        className="h-64 overflow-auto bg-background p-3 text-[11px] leading-relaxed font-mono text-muted-foreground whitespace-pre-wrap"
+      >
         {logs.length === 0 ? (
           <span className="text-muted-foreground/70">Waiting for CLI output…</span>
         ) : (
@@ -236,7 +311,6 @@ export function DeploymentLiveLogs({
             <div key={`${i}-${line.slice(0, 24)}`}>{line}</div>
           ))
         )}
-        <div ref={bottomRef} />
       </pre>
       {planSummary && (
         <div className="border-t border-border px-4 py-2 text-xs text-muted-foreground font-mono whitespace-pre-wrap max-h-32 overflow-auto">

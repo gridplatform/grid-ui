@@ -22,6 +22,7 @@ import {
   useInfrastructures,
   usePendingApprovals,
   useReleases,
+  useCancelRelease,
 } from "@/hooks/useGridApi";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
@@ -37,6 +38,7 @@ const statusConfig: Partial<
   deploying: { label: "Releasing", color: "bg-blue-500/10 text-blue-400", icon: Loader2 },
   success: { label: "Success", color: "bg-success/10 text-success", icon: CheckCircle2 },
   failed: { label: "Failed", color: "bg-destructive/10 text-destructive", icon: XCircle },
+  cancelled: { label: "Cancelled", color: "bg-muted text-muted-foreground", icon: XCircle },
   rolled_back: { label: "Rolled back", color: "bg-muted text-muted-foreground", icon: Calendar },
 };
 
@@ -61,6 +63,7 @@ const ReleasesPage = () => {
     enabled: !!projectSlug,
   });
   const createRelease = useCreateRelease();
+  const cancelRelease = useCancelRelease();
 
   const [envFilter, setEnvFilter] = useState("");
   const [showModal, setShowModal] = useState(false);
@@ -177,6 +180,28 @@ const ReleasesPage = () => {
     }
   };
 
+  const handleCancel = async (release: Release, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!isAdmin) return;
+    const killing = release.status === "deploying";
+    const ok = window.confirm(
+      killing
+        ? `Kill running release “${release.name}”? Terraform/CLI will be stopped. For apply/destroy, Grid will attempt terraform destroy to clean up partial cloud resources, then clear local state.`
+        : `Cancel queued release “${release.name}”? It will not run.`
+    );
+    if (!ok) return;
+    try {
+      await cancelRelease.mutateAsync(release.id);
+      setSubmitNote(
+        killing
+          ? `Killed “${release.name}” — see logs for cleanup status.`
+          : `Cancelled queued release “${release.name}”.`
+      );
+    } catch (err) {
+      setSubmitNote(err instanceof Error ? err.message : "Cancel failed");
+    }
+  };
+
   const renderRow = (release: Release) => {
     const sc = statusConfig[release.status] ?? {
       label: release.status,
@@ -185,17 +210,23 @@ const ReleasesPage = () => {
     };
     const Icon = sc.icon;
     const open = expandedId === release.id;
+    const canCancel =
+      isAdmin &&
+      (release.status === "queued" ||
+        release.status === "deploying" ||
+        release.status === "pending_approval" ||
+        release.status === "approved");
     return (
       <div key={release.id} className="border-b border-border last:border-b-0">
-        <button
-          type="button"
-          onClick={() => {
-            setExpandedId(open ? null : release.id);
-            if (release.deploymentId) setWatchingId(release.deploymentId);
-          }}
-          className="w-full flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-4 py-3 text-left hover:bg-secondary/40 transition-colors"
-        >
-          <div className="min-w-0 flex items-start sm:items-center gap-3">
+        <div className="w-full flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-4 py-3">
+          <button
+            type="button"
+            onClick={() => {
+              setExpandedId(open ? null : release.id);
+              if (release.deploymentId) setWatchingId(release.deploymentId);
+            }}
+            className="min-w-0 flex items-start sm:items-center gap-3 text-left hover:opacity-90 flex-1"
+          >
             <Icon
               className={`w-4 h-4 flex-shrink-0 mt-0.5 sm:mt-0 ${
                 release.status === "deploying" ? "animate-spin" : ""
@@ -218,8 +249,18 @@ const ReleasesPage = () => {
                 <p className="text-[11px] text-muted-foreground mt-0.5">{release.message}</p>
               )}
             </div>
-          </div>
+          </button>
           <div className="flex items-center gap-2 flex-shrink-0 pl-7 sm:pl-0">
+            {canCancel && (
+              <button
+                type="button"
+                onClick={(e) => void handleCancel(release, e)}
+                disabled={cancelRelease.isPending}
+                className="text-xs px-2 py-1 rounded-md border border-destructive/40 text-destructive hover:bg-destructive/10 disabled:opacity-50"
+              >
+                {release.status === "deploying" ? "Kill" : "Cancel"}
+              </button>
+            )}
             <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${sc.color}`}>
               {sc.label}
             </span>
@@ -227,7 +268,7 @@ const ReleasesPage = () => {
               {new Date(release.createdAt).toLocaleString()}
             </span>
           </div>
-        </button>
+        </div>
         {open && (
           <div className="px-4 pb-4 space-y-3">
             {release.customCommand && (
