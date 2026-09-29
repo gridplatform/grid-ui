@@ -3,26 +3,21 @@ import { useParams, useNavigate } from "react-router-dom";
 import AppShell from "@/components/AppShell";
 import {
   ArrowLeft, Save, X, Sparkles, Loader2, CheckCircle2, XCircle,
-  AlertTriangle, Server, Cloud, Network, Database, Monitor, Globe,
-  Box, Timer, Layers, Shield, Container, HardDrive, Cpu,
+  AlertTriangle, Box,
 } from "lucide-react";
-import { type Resource, type ResourceType } from "./InfrastructurePage";
+import { type Resource } from "./InfrastructurePage";
 import {
   useApplyInfrastructure,
   useDestroyInfrastructure,
   useDriftCheck,
   useInfrastructure,
   usePlanInfrastructure,
+  useRestoreInfrastructureConfig,
   useUpdateInfrastructure,
 } from "@/hooks/useGridApi";
 import { DeploymentLiveLogs } from "@/components/DeploymentLiveLogs";
-
-const typeIcons: Record<ResourceType, React.ElementType> = {
-  "single-vm": Monitor, "vm-cluster": Server, kubernetes: Cloud, network: Network, "managed-service": Database,
-  "k8s-ingress": Globe, "k8s-deployment": Box, "k8s-service": Layers, "k8s-cronjob": Timer,
-  "k8s-statefulset": Container, "k8s-daemonset": Shield, "k8s-storage": HardDrive,
-  "gpu-node": Cpu, "gpu-pool": Cpu,
-};
+import { categoryForResourceType, categoryLabel } from "@/lib/resourceCategory";
+import type { TerraformCategory } from "@/lib/deployContract";
 
 const statusColors: Record<string, string> = {
   running: "bg-success/10 text-success",
@@ -31,6 +26,7 @@ const statusColors: Record<string, string> = {
   degraded: "bg-warning/10 text-warning",
   pending: "bg-muted text-muted-foreground",
   destroyed: "bg-destructive/10 text-destructive",
+  stale: "bg-warning/15 text-warning border border-warning/30",
 };
 
 interface AiAnalysis {
@@ -45,11 +41,12 @@ const InfrastructureDetailPage = () => {
   const { resourceId } = useParams();
   const navigate = useNavigate();
 
-  const { data: liveInfra, isLoading: liveLoading } = useInfrastructure(resourceId || "");
+  const { data: liveInfra, isLoading: liveLoading, refetch } = useInfrastructure(resourceId || "");
   const updateInfra = useUpdateInfrastructure();
   const planInfra = usePlanInfrastructure();
   const applyInfra = useApplyInfrastructure();
   const destroyInfra = useDestroyInfrastructure();
+  const restoreConfig = useRestoreInfrastructureConfig();
   const driftCheck = useDriftCheck();
   const [driftReport, setDriftReport] = useState<{
     hasDrift?: boolean;
@@ -60,25 +57,44 @@ const InfrastructureDetailPage = () => {
   } | null>(null);
 
   const resource: Resource | null = liveInfra
-    ? {
-        id: liveInfra.id,
-        name: liveInfra.name,
-        type: "single-vm",
-        status:
-          liveInfra.status === "running" ||
-          liveInfra.status === "error" ||
-          liveInfra.status === "degraded"
-            ? liveInfra.status
-            : "stopped",
-        region: String((liveInfra.configJson as { region?: string }).region || "—"),
-        environment: liveInfra.environment,
-        provider: liveInfra.provider,
-        ip: "—",
-        cpu: "—",
-        memory: "—",
-        connections: [],
-        config: liveInfra.configJson,
-      }
+    ? (() => {
+        const subtype = (() => {
+          const resources = (liveInfra.configJson as { resources?: Array<{ type?: string }> })
+            ?.resources;
+          const fromRes = resources?.[0]?.type;
+          if (fromRes) return fromRes.toLowerCase();
+          const path = liveInfra.gitPath?.replace(/\\/g, "/");
+          if (path) {
+            const parts = path.split("/").filter(Boolean);
+            if (parts.length >= 2) return parts[parts.length - 2].toLowerCase();
+          }
+          return "unknown";
+        })();
+        const category = categoryForResourceType(subtype);
+        return {
+          id: liveInfra.id,
+          name: liveInfra.name,
+          type: subtype,
+          category,
+          engine: "terraform" as const,
+          status:
+            liveInfra.status === "running" ||
+            liveInfra.status === "error" ||
+            liveInfra.status === "degraded" ||
+            liveInfra.status === "stale" ||
+            liveInfra.status === "pending"
+              ? liveInfra.status
+              : ("stopped" as const),
+          region: String((liveInfra.configJson as { region?: string }).region || "—"),
+          environment: liveInfra.environment,
+          provider: liveInfra.provider,
+          ip: "—",
+          cpu: "—",
+          memory: "—",
+          connections: [],
+          config: liveInfra.configJson,
+        };
+      })()
     : null;
 
   const [activeTab, setActiveTab] = useState<"details" | "ai">("details");
@@ -114,7 +130,7 @@ const InfrastructureDetailPage = () => {
     );
   }
 
-  const TypeIcon = typeIcons[resource.type] || Monitor;
+  const TypeIcon = Box;
   const isLive = !!liveInfra;
 
   const startEdit = () => {
@@ -171,6 +187,17 @@ const InfrastructureDetailPage = () => {
     }
   };
 
+  const runRestoreConfig = async () => {
+    if (!resourceId || !isLive) return;
+    try {
+      await restoreConfig.mutateAsync(resourceId);
+      setActionNote("Config restored under GRID_CONFIG_ROOT. Status cleared from stale.");
+      await refetch();
+    } catch (e) {
+      setActionNote(e instanceof Error ? e.message : "Restore failed");
+    }
+  };
+
   const runDrift = async () => {
     if (!resourceId || !isLive) return;
     try {
@@ -221,15 +248,38 @@ const InfrastructureDetailPage = () => {
             <div>
               <h1 className="text-lg font-semibold text-foreground">{resource.name}</h1>
               <p className="text-sm text-muted-foreground">
-                {resource.type} · {resource.region} · {resource.environment} · {resource.provider}
+                {categoryLabel(resource.category as TerraformCategory)} · {resource.type} ·{" "}
+                {resource.region} · {resource.environment} · {resource.provider}
               </p>
             </div>
-            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusColors[resource.status] || statusColors.pending}`}>
-              {liveInfra?.status === "destroyed" ? "destroyed" : resource.status}
+            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusColors[liveInfra?.status || resource.status] || statusColors.pending}`}>
+              {liveInfra?.status === "destroyed"
+                ? "destroyed"
+                : liveInfra?.status === "stale"
+                  ? "removed from config"
+                  : resource.status}
             </span>
           </div>
           <div className="flex items-center gap-2">
-            {isLive && liveInfra?.status !== "destroyed" && (
+            {isLive && liveInfra?.status === "stale" && (
+              <>
+                <button
+                  onClick={() => void runRestoreConfig()}
+                  disabled={restoreConfig.isPending}
+                  className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 disabled:opacity-50"
+                >
+                  Restore to config
+                </button>
+                <button
+                  onClick={() => void runDestroy()}
+                  disabled={destroyInfra.isPending}
+                  className="px-3 py-1.5 text-sm border border-destructive/40 text-destructive rounded-md hover:bg-destructive/10 disabled:opacity-50"
+                >
+                  Destroy
+                </button>
+              </>
+            )}
+            {isLive && liveInfra?.status !== "destroyed" && liveInfra?.status !== "stale" && (
               <>
                 <button
                   onClick={() => void runDrift()}
@@ -276,6 +326,22 @@ const InfrastructureDetailPage = () => {
         {actionNote && (
           <div className="rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
             {actionNote}
+          </div>
+        )}
+
+        {liveInfra?.status === "stale" && (
+          <div className="rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 flex items-start gap-3">
+            <AlertTriangle className="w-4 h-4 text-warning mt-0.5 flex-shrink-0" />
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-foreground">
+                Removed from config, still in state
+              </p>
+              <p className="text-xs text-muted-foreground">
+                This unit&apos;s desired-state JSON is gone, but Grid still has applied state for it
+                {liveInfra.gitPath ? ` (was ${liveInfra.gitPath})` : ""}. Destroy the cloud
+                resources, or restore the config file so it is managed again.
+              </p>
+            </div>
           </div>
         )}
 

@@ -94,12 +94,12 @@ export const KUBERNETES_CLUSTER_TARGETS: (TerraformTarget & {
   id: string;
   regionHint: string;
 })[] = [
-  { id: "eks", provider: "aws", resourceType: "eks", label: "Amazon EKS", regionHint: "us-east-1" },
-  { id: "gke", provider: "gcp", resourceType: "kubernetes-engine", label: "Google GKE", regionHint: "us-central1" },
-  { id: "aks", provider: "azure", resourceType: "aks", label: "Azure AKS", regionHint: "eastus" },
-  { id: "oke", provider: "oracle", resourceType: "oke", label: "Oracle OKE", regionHint: "us-ashburn-1" },
-  { id: "rosa", provider: "openshift", resourceType: "rosa-cluster", label: "Red Hat ROSA", regionHint: "us-east-1" },
-  { id: "roks", provider: "ibm", resourceType: "roks", label: "IBM ROKS", regionHint: "us-south" },
+  { id: "eks", provider: "aws", resourceType: "eks", label: "Amazon EKS cluster", regionHint: "us-east-1" },
+  { id: "gke", provider: "gcp", resourceType: "gke", label: "Google GKE cluster", regionHint: "us-central1" },
+  { id: "aks", provider: "azure", resourceType: "aks", label: "Azure AKS cluster", regionHint: "eastus" },
+  { id: "oke", provider: "oracle", resourceType: "oke", label: "Oracle OKE cluster", regionHint: "us-ashburn-1" },
+  { id: "rosa", provider: "openshift", resourceType: "rosa-cluster", label: "Red Hat ROSA cluster", regionHint: "us-east-1" },
+  { id: "roks", provider: "ibm", resourceType: "roks", label: "IBM ROKS cluster", regionHint: "us-south" },
 ];
 
 /** UI categories for Terraform-backed deploys, each with its concrete targets. */
@@ -143,13 +143,27 @@ export const TERRAFORM_CATEGORIES: {
   },
   {
     id: "kubernetes-cluster",
-    label: "Kubernetes",
-    description: "Provision a cluster on any supported cloud — EKS, GKE, AKS, OKE, ROSA, and more.",
-    targets: KUBERNETES_CLUSTER_TARGETS.map(({ provider, resourceType, label }) => ({
-      provider,
-      resourceType,
-      label,
-    })),
+    label: "Kubernetes clusters",
+    description:
+      "Managed clusters and node pools as separate desired-state units (one YAML per cluster, one YAML per node pool). Workloads live under the Workloads tab.",
+    targets: [
+      ...KUBERNETES_CLUSTER_TARGETS.map(({ provider, resourceType, label }) => ({
+        provider,
+        resourceType,
+        label,
+      })),
+      { provider: "aws", resourceType: "eks-node-group", label: "EKS node group" },
+      { provider: "aws", resourceType: "eks-gpu-node-group", label: "EKS GPU node group" },
+      { provider: "aws", resourceType: "gpu-node-pool", label: "GPU node pool" },
+      { provider: "gcp", resourceType: "gke-node-pool", label: "GKE node pool" },
+      { provider: "gcp", resourceType: "gpu-node-pool", label: "GPU node pool" },
+      { provider: "azure", resourceType: "aks-node-pool", label: "AKS node pool" },
+      { provider: "alibaba", resourceType: "ack-node-pool", label: "ACK node pool" },
+      { provider: "tencent", resourceType: "tke-node-pool", label: "TKE node pool" },
+      { provider: "huawei", resourceType: "cce-node-pool", label: "CCE node pool" },
+      { provider: "ovh", resourceType: "kubernetes-node-pool", label: "OVH node pool" },
+      { provider: "rancher", resourceType: "node-pool", label: "Rancher node pool" },
+    ],
   },
   {
     id: "database",
@@ -193,12 +207,10 @@ export const TERRAFORM_CATEGORIES: {
       { provider: "aws", resourceType: "sagemaker", label: "SageMaker" },
       { provider: "aws", resourceType: "bedrock-agent", label: "Bedrock agent" },
       { provider: "aws", resourceType: "bedrock-knowledge-base", label: "Bedrock knowledge base" },
-      { provider: "aws", resourceType: "gpu-node-pool", label: "GPU node pool" },
       { provider: "aws", resourceType: "vllm", label: "vLLM" },
       { provider: "aws", resourceType: "kserve", label: "KServe" },
       { provider: "gcp", resourceType: "vertex-ai", label: "Vertex AI" },
       { provider: "gcp", resourceType: "vertex-ai-workbench", label: "Vertex AI Workbench" },
-      { provider: "gcp", resourceType: "gpu-node-pool", label: "GPU node pool" },
       { provider: "gcp", resourceType: "kuberay", label: "KubeRay" },
       { provider: "azure", resourceType: "openai", label: "Azure OpenAI" },
       { provider: "azure", resourceType: "machine-learning", label: "Azure ML workspace" },

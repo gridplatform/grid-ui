@@ -7,6 +7,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { GridDeployRequest } from "@/lib/deployContract";
+import { clearAuthToken, getAuthToken } from "@/lib/authStorage";
 import type {
   TopologyProvider,
   TopologyVpc,
@@ -27,6 +28,8 @@ import type {
   User,
   Recommendation,
   TimeSeriesData,
+  CreateReleaseRequest,
+  Project,
 } from "@/types/api";
 
 // ─── Configuration ──────────────────────────────────────────────────────────
@@ -36,17 +39,30 @@ const API_BASE_URL = import.meta.env.VITE_GRID_API_URL || "/api/v1";
 // ─── API Client ─────────────────────────────────────────────────────────────
 
 async function gridFetch<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  const token = getAuthToken();
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options?.headers,
     },
   });
 
+  if (response.status === 401 && token) {
+    clearAuthToken();
+    if (typeof window !== "undefined" && window.location.pathname !== "/") {
+      window.location.href = "/";
+    }
+  }
+
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: response.statusText }));
     throw new Error(error.message || `API Error: ${response.status}`);
+  }
+
+  if (response.status === 204) {
+    return undefined as T;
   }
 
   return response.json();
@@ -93,14 +109,30 @@ export function useVpcResources(vpcId: string) {
 // ─── Infrastructure Hooks ───────────────────────────────────────────────────
 
 /**
- * Fetch all infrastructure resources
- * GET /api/v1/infrastructures
+ * Fetch infrastructure list (optionally scoped to project / environment)
+ * GET /api/v1/infrastructures?project=&environment=
  */
-export function useInfrastructures() {
+export function useInfrastructures(filters?: {
+  project?: string | null;
+  environment?: string | null;
+  enabled?: boolean;
+}) {
+  const project = filters?.project || undefined;
+  const environment = filters?.environment || undefined;
+  const enabled = filters?.enabled !== false;
   return useQuery({
-    queryKey: ["infrastructures"],
-    queryFn: () => gridFetch<InfrastructureListItem[]>("/infrastructures"),
-    staleTime: 10_000,
+    queryKey: ["infrastructures", project || "all", environment || "all"],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (project) params.set("project", project);
+      if (environment) params.set("environment", environment);
+      const qs = params.toString();
+      return gridFetch<InfrastructureListItem[]>(
+        `/infrastructures${qs ? `?${qs}` : ""}`
+      );
+    },
+    enabled,
+    staleTime: 15_000,
   });
 }
 
@@ -203,6 +235,25 @@ export function useDestroyInfrastructure() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["infrastructures"] });
       queryClient.invalidateQueries({ queryKey: ["deployments"] });
+    },
+  });
+}
+
+/**
+ * POST /api/v1/infrastructures/:id/restore-config
+ * Write stored configJson back under GRID_CONFIG_ROOT (stale → pending/running).
+ */
+export function useRestoreInfrastructureConfig() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) =>
+      gridFetch<Infrastructure>(`/infrastructures/${id}/restore-config`, { method: "POST" }),
+    onSuccess: (_data, id) => {
+      queryClient.invalidateQueries({ queryKey: ["infrastructures"] });
+      queryClient.invalidateQueries({ queryKey: ["infrastructures", id] });
+      queryClient.invalidateQueries({ queryKey: ["topology"] });
+      queryClient.invalidateQueries({ queryKey: ["environments"] });
     },
   });
 }
@@ -407,6 +458,49 @@ export function useReleases() {
   return useQuery({
     queryKey: ["releases"],
     queryFn: () => gridFetch<Release[]>("/releases"),
+    refetchInterval: (query) => {
+      const list = query.state.data;
+      if (list?.some((r) => r.status === "deploying" || r.status === "queued")) {
+        return 2_000;
+      }
+      return 15_000;
+    },
+  });
+}
+
+/**
+ * POST /api/v1/releases — enqueue plan / apply / custom release
+ */
+export function useCreateRelease() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (body: CreateReleaseRequest) =>
+      gridFetch<Release>("/releases", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["releases"] });
+      queryClient.invalidateQueries({ queryKey: ["deployments"] });
+      queryClient.invalidateQueries({ queryKey: ["infrastructures"] });
+    },
+  });
+}
+
+/**
+ * GET /api/v1/releases/:id
+ */
+export function useRelease(id: string) {
+  return useQuery({
+    queryKey: ["releases", id],
+    queryFn: () => gridFetch<Release>(`/releases/${id}`),
+    enabled: !!id,
+    refetchInterval: (query) => {
+      const r = query.state.data;
+      if (r?.status === "deploying" || r?.status === "queued") return 2_000;
+      return false;
+    },
   });
 }
 
@@ -596,13 +690,60 @@ export function useLogs(query: LogQuery) {
 // ─── Environment Hooks ──────────────────────────────────────────────────────
 
 /**
- * Fetch environments
- * GET /api/v1/environments
+ * Fetch environments (optionally scoped to a project slug)
+ * GET /api/v1/environments?project=<slug>
  */
-export function useEnvironments() {
+export function useEnvironments(
+  projectSlug?: string | null,
+  options?: { enabled?: boolean }
+) {
   return useQuery({
-    queryKey: ["environments"],
-    queryFn: () => gridFetch<Environment[]>("/environments"),
+    queryKey: ["environments", projectSlug || "all"],
+    queryFn: () => {
+      const qs = projectSlug ? `?project=${encodeURIComponent(projectSlug)}` : "";
+      return gridFetch<Environment[]>(`/environments${qs}`);
+    },
+    enabled: options?.enabled !== false,
+    staleTime: 30_000,
+  });
+}
+
+/**
+ * Fetch projects (apps) from GRID_CONFIG_ROOT
+ * GET /api/v1/projects
+ */
+export function useProjects() {
+  return useQuery({
+    queryKey: ["projects"],
+    queryFn: () => gridFetch<Project[]>("/projects"),
+    staleTime: 30_000,
+  });
+}
+
+/**
+ * Global search via grid-core
+ * GET /api/v1/search?q=
+ */
+export function useGridSearch(query: string) {
+  const q = query.trim();
+  return useQuery({
+    queryKey: ["search", q],
+    queryFn: () =>
+      gridFetch<{
+        projects: Project[];
+        environments: Environment[];
+        infrastructures: Array<{
+          id: string;
+          name: string;
+          environment: string;
+          project?: string;
+          provider: string;
+          status: string;
+          gitPath?: string;
+        }>;
+      }>(`/search?q=${encodeURIComponent(q)}`),
+    enabled: q.length >= 2,
+    staleTime: 5_000,
   });
 }
 
@@ -629,5 +770,7 @@ export function useCurrentUser() {
   return useQuery({
     queryKey: ["auth", "me"],
     queryFn: () => gridFetch<User>("/auth/me"),
+    enabled: !!getAuthToken(),
+    retry: false,
   });
 }

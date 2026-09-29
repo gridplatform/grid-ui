@@ -29,7 +29,8 @@ const DashboardPage = () => {
     const running = infrastructures.filter((r) => r.status === "running").length;
     const errors = infrastructures.filter((r) => r.status === "error").length;
     const degraded = infrastructures.filter((r) => r.status === "degraded").length;
-    return { total, running, errors, degraded };
+    const stale = infrastructures.filter((r) => r.status === "stale").length;
+    return { total, running, errors, degraded, stale };
   }, [infrastructures]);
 
   const firingAlerts = alerts.filter((a) => a.status === "firing");
@@ -47,7 +48,10 @@ const DashboardPage = () => {
     {
       label: "Infrastructure",
       value: infraLoading ? "…" : `${infraSummary.total}`,
-      sub: `${infraSummary.running} running`,
+      sub:
+        infraSummary.stale > 0
+          ? `${infraSummary.running} running · ${infraSummary.stale} removed from config`
+          : `${infraSummary.running} running`,
       icon: Server,
       color: "text-primary",
     },
