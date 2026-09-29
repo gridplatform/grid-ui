@@ -203,6 +203,7 @@ const ReleasesPage = () => {
                 {modeLabels[release.mode] || release.mode}
                 {release.infrastructureName ? ` · ${release.infrastructureName}` : ""}
                 {release.type === "custom" ? " · custom" : ""}
+                {release.createdBy ? ` · by ${release.createdBy}` : ""}
               </p>
               {release.message && (
                 <p className="text-[11px] text-muted-foreground mt-0.5">{release.message}</p>
