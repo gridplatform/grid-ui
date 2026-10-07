@@ -325,7 +325,7 @@ const ReleasesPage = () => {
                 </option>
               ))}
             </select>
-            <button
+              <button
               type="button"
               onClick={openModal}
               className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 whitespace-nowrap"
@@ -345,8 +345,8 @@ const ReleasesPage = () => {
                 {active.name} · {modeLabels[active.mode]} · {active.environment}
                 {queued.length > 0 ? ` · ${queued.length} waiting in queue` : ""}
               </p>
-            </div>
-          </div>
+                        </div>
+                      </div>
         )}
 
         {drifted.some((i) => i.status === "stale") && (
@@ -358,15 +358,15 @@ const ReleasesPage = () => {
                 Some infrastructure is stale or out of sync. Create a plan or apply release after
                 reviewing the Infrastructure tab.
               </p>
-            </div>
-          </div>
+                      </div>
+                    </div>
         )}
 
         {error && (
           <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
             {error instanceof Error ? error.message : "Failed to load releases"}
-          </div>
-        )}
+              </div>
+            )}
 
         {submitNote && !showModal && (
           <div className="rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
@@ -436,7 +436,7 @@ const ReleasesPage = () => {
                   <span>Only one release deploys at a time; others wait in the queue.</span>
                 </li>
               </ul>
-            </div>
+                      </div>
 
             <div className="rounded-lg border border-border bg-card p-4 space-y-2">
               <h3 className="text-sm font-medium text-foreground">Queue status</h3>
@@ -445,8 +445,8 @@ const ReleasesPage = () => {
                   <p className="text-lg font-semibold text-foreground">{active ? 1 : 0}</p>
                   <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
                     Running
-                  </p>
-                </div>
+                      </p>
+                    </div>
                 <div className="rounded-md bg-secondary/50 p-3">
                   <p className="text-lg font-semibold text-foreground">{queued.length}</p>
                   <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
@@ -471,13 +471,13 @@ const ReleasesPage = () => {
               onClick={(e) => e.stopPropagation()}
             >
               <div className="sticky top-0 bg-card border-b border-border px-4 py-3 flex items-center justify-between">
-                <div>
+              <div>
                   <h2 className="text-sm font-semibold text-foreground">New release</h2>
                   <p className="text-[11px] text-muted-foreground mt-0.5">
                     {selectedProject?.name || projectSlug || "No project"}
                     {selectedEnv ? ` · ${selectedEnv.name}` : ""}
-                  </p>
-                </div>
+                </p>
+              </div>
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
@@ -492,7 +492,7 @@ const ReleasesPage = () => {
                   <div className="rounded-md border border-border bg-secondary/40 px-3 py-2 text-xs text-muted-foreground">
                     A release is already running. Yours will be <strong>queued</strong> until it
                     finishes.
-                  </div>
+            </div>
                 )}
 
                 <div className="space-y-1.5">
@@ -510,7 +510,7 @@ const ReleasesPage = () => {
                         { id: "custom" as const, label: "Custom", icon: Terminal },
                       ] as const
                     ).map((opt) => (
-                      <button
+              <button
                         key={opt.id}
                         type="button"
                         onClick={() => setMode(opt.id)}
@@ -528,7 +528,7 @@ const ReleasesPage = () => {
                           }`}
                         />
                         {opt.label}
-                      </button>
+              </button>
                     ))}
                   </div>
                   <p className="text-[11px] text-muted-foreground">
@@ -612,11 +612,11 @@ const ReleasesPage = () => {
                     <label className="text-xs font-medium text-foreground">
                       Grid CLI command
                     </label>
-                    <textarea
+                      <textarea
                       value={customCommand}
                       onChange={(e) => setCustomCommand(e.target.value)}
                       rows={3}
-                      spellCheck={false}
+                        spellCheck={false}
                       className="w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
                       placeholder="grid status --config-dir ."
                     />
@@ -624,8 +624,8 @@ const ReleasesPage = () => {
                       Allowed subcommands: status, deploy, destroy, plan, generate, validate, prune,
                       init, catalog…
                     </p>
-                  </div>
-                )}
+                        </div>
+                      )}
 
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-foreground">
@@ -642,18 +642,18 @@ const ReleasesPage = () => {
                 {submitNote && (
                   <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
                     {submitNote}
-                  </div>
+                    </div>
                 )}
               </div>
 
               <div className="sticky bottom-0 bg-card border-t border-border px-4 py-3 flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">
-                <button
+                      <button
                   type="button"
                   onClick={() => setShowModal(false)}
                   className="px-3 py-2 text-sm border border-border rounded-md hover:bg-secondary"
                 >
                   Cancel
-                </button>
+                      </button>
                 <button
                   type="button"
                   onClick={() => void handleCreate()}
