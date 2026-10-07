@@ -2,15 +2,16 @@ import { useEffect, useState, type ElementType } from "react";
 import { useSearchParams } from "react-router-dom";
 import AppShell from "@/components/AppShell";
 import { AdminSourcesPanel } from "@/components/AdminSourcesPanel";
-import { ShieldCheck, Users, KeyRound, ScrollText, FolderGit2 } from "lucide-react";
+import { ShieldCheck, Users, KeyRound, ScrollText, FolderGit2, Info } from "lucide-react";
 import {
   useAdminUsers,
   useAuditLog,
   useCurrentUser,
   useEnvironments,
+  useSystemVersion,
 } from "@/hooks/useGridApi";
 
-type AdminTab = "users" | "keys" | "audit" | "environments" | "sources";
+type AdminTab = "users" | "keys" | "audit" | "environments" | "sources" | "about";
 
 const outcomeClass: Record<string, string> = {
   success: "text-success",
@@ -18,11 +19,23 @@ const outcomeClass: Record<string, string> = {
   denied: "text-warning",
 };
 
+const uiVersion =
+  typeof __GRID_UI_VERSION__ === "string" ? __GRID_UI_VERSION__ : "unknown";
+
+function VersionRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-start justify-between gap-4 px-4 py-3">
+      <p className="text-sm text-muted-foreground">{label}</p>
+      <p className="text-sm font-mono text-foreground text-right break-all">{value}</p>
+    </div>
+  );
+}
+
 const AdminPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const initial = (searchParams.get("tab") as AdminTab) || "users";
   const [tab, setTab] = useState<AdminTab>(
-    ["users", "keys", "audit", "environments", "sources"].includes(initial)
+    ["users", "keys", "audit", "environments", "sources", "about"].includes(initial)
       ? initial
       : "users"
   );
@@ -30,10 +43,15 @@ const AdminPage = () => {
   const { data: environments = [], isLoading: envsLoading } = useEnvironments();
   const { data: users = [], isLoading: usersLoading } = useAdminUsers();
   const { data: auditLog = [], isLoading: auditLoading } = useAuditLog(300);
+  const {
+    data: systemVersion,
+    isLoading: versionLoading,
+    error: versionError,
+  } = useSystemVersion();
 
   useEffect(() => {
     const t = searchParams.get("tab") as AdminTab | null;
-    if (t && ["users", "keys", "audit", "environments", "sources"].includes(t)) {
+    if (t && ["users", "keys", "audit", "environments", "sources", "about"].includes(t)) {
       setTab(t);
     }
   }, [searchParams]);
@@ -44,6 +62,7 @@ const AdminPage = () => {
     { id: "audit", label: "Audit", icon: ScrollText },
     { id: "environments", label: "Environments", icon: ShieldCheck },
     { id: "sources", label: "Sources", icon: FolderGit2 },
+    { id: "about", label: "About", icon: Info },
   ];
 
   const selectTab = (id: AdminTab) => {
@@ -51,10 +70,10 @@ const AdminPage = () => {
     setSearchParams(id === "users" ? {} : { tab: id });
   };
 
-    return (
+  return (
     <AppShell activeTab="overview" isAdmin>
       <div className="p-6 space-y-6 max-w-5xl">
-          <div>
+        <div>
           <h1 className="text-lg font-semibold text-foreground flex items-center gap-2">
             <ShieldCheck className="w-5 h-5" />
             Admin
@@ -70,7 +89,7 @@ const AdminPage = () => {
 
         <div className="flex items-center gap-1 p-1 bg-card border border-border rounded-lg w-fit flex-wrap">
           {tabs.map((t) => (
-        <button
+            <button
               key={t.id}
               type="button"
               onClick={() => selectTab(t.id)}
@@ -82,11 +101,11 @@ const AdminPage = () => {
             >
               <t.icon className="w-4 h-4" />
               {t.label}
-        </button>
+            </button>
           ))}
-      </div>
+        </div>
 
-      <div className="rounded-lg border border-border bg-card overflow-hidden">
+        <div className="rounded-lg border border-border bg-card overflow-hidden">
           {tab === "users" && (
             <>
               <div className="p-4 border-b border-border flex items-center justify-between">
@@ -94,13 +113,13 @@ const AdminPage = () => {
                 <span className="text-xs text-muted-foreground">
                   {usersLoading ? "loading…" : `${users.length} users`}
                 </span>
-        </div>
+              </div>
               {usersLoading ? (
                 <div className="p-8 text-center text-sm text-muted-foreground">Loading users…</div>
               ) : users.length === 0 ? (
                 <div className="p-8 text-center text-sm text-muted-foreground">
                   No users returned from the API yet.
-              </div>
+                </div>
               ) : (
                 <div className="divide-y divide-border">
                   {users.map((u) => (
@@ -113,11 +132,11 @@ const AdminPage = () => {
                           {u.name || u.email}
                         </p>
                         <p className="text-xs text-muted-foreground truncate">{u.email}</p>
-      </div>
+                      </div>
                       <span className="text-xs text-muted-foreground flex-shrink-0">{u.role}</span>
-            </div>
+                    </div>
                   ))}
-            </div>
+                </div>
               )}
             </>
           )}
@@ -126,11 +145,11 @@ const AdminPage = () => {
             <>
               <div className="p-4 border-b border-border">
                 <h2 className="text-sm font-medium text-foreground">API keys</h2>
-      </div>
+              </div>
               <div className="p-8 text-center text-sm text-muted-foreground">
                 API key management is not wired yet. When keys are created or revoked, those
                 actions will appear in the Audit log.
-          </div>
+              </div>
             </>
           )}
 
@@ -140,15 +159,15 @@ const AdminPage = () => {
                 <h2 className="text-sm font-medium text-foreground">Audit log</h2>
                 <span className="text-xs text-muted-foreground">
                   {auditLoading ? "loading…" : `${auditLog.length} events`}
-                    </span>
-                </div>
+                </span>
+              </div>
               {auditLoading ? (
                 <div className="p-8 text-center text-sm text-muted-foreground">Loading audit…</div>
               ) : auditLog.length === 0 ? (
                 <div className="p-8 text-center text-sm text-muted-foreground">
                   No audit events yet. Releases, syncs, user changes, and drift checks will show
                   up here.
-                          </div>
+                </div>
               ) : (
                 <div className="divide-y divide-border max-h-[32rem] overflow-y-auto">
                   {auditLog.map((ev) => (
@@ -162,7 +181,7 @@ const AdminPage = () => {
                         >
                           {ev.outcome}
                         </span>
-                            </div>
+                      </div>
                       <p className="text-[11px] text-muted-foreground break-words">
                         {new Date(ev.at).toLocaleString()}
                         {" · "}
@@ -171,10 +190,10 @@ const AdminPage = () => {
                         {" · "}
                         <span className="font-mono">{ev.action}</span>
                         {ev.resourceName ? ` · ${ev.resourceName}` : ""}
-          </p>
-        </div>
-        ))}
-      </div>
+                      </p>
+                    </div>
+                  ))}
+                </div>
               )}
             </>
           )}
@@ -186,11 +205,11 @@ const AdminPage = () => {
                 <span className="text-xs text-muted-foreground">
                   {envsLoading ? "loading…" : `${environments.length} envs`}
                 </span>
-        </div>
+              </div>
               {!envsLoading && environments.length === 0 ? (
                 <div className="p-8 text-center text-sm text-muted-foreground">
                   No environments from grid-core.
-        </div>
+                </div>
               ) : (
                 <div className="divide-y divide-border">
                   {environments.map((env) => (
@@ -207,19 +226,81 @@ const AdminPage = () => {
                                 env.expired ? " · expired" : ""
                               }`
                             : ` · canonical · ${env.unitCount ?? 0} units`}
-        </p>
-      </div>
+                        </p>
+                      </div>
                       <span className="text-xs text-muted-foreground flex-shrink-0">
                         {env.approvalRequired ? "approval required" : "auto"}
                       </span>
-          </div>
-        ))}
-        </div>
-      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </>
           )}
 
           {tab === "sources" && <AdminSourcesPanel />}
+
+          {tab === "about" && (
+            <>
+              <div className="p-4 border-b border-border">
+                <h2 className="text-sm font-medium text-foreground">Running versions</h2>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Components and runtime in this control plane.
+                </p>
+              </div>
+              {versionLoading ? (
+                <div className="p-8 text-center text-sm text-muted-foreground">Loading…</div>
+              ) : versionError ? (
+                <div className="p-8 text-center text-sm text-destructive">
+                  {versionError instanceof Error
+                    ? versionError.message
+                    : "Failed to load system version"}
+                </div>
+              ) : (
+                <div className="divide-y divide-border">
+                  <VersionRow label="grid-ui" value={uiVersion} />
+                  <VersionRow
+                    label="grid-core"
+                    value={systemVersion?.core.version || "—"}
+                  />
+                  <VersionRow
+                    label="grid-cli"
+                    value={systemVersion?.cli.version || "—"}
+                  />
+                  <VersionRow
+                    label="Terraform"
+                    value={systemVersion?.terraform.version || "—"}
+                  />
+                  <VersionRow
+                    label="Node.js"
+                    value={systemVersion?.runtime.node || "—"}
+                  />
+                  <VersionRow
+                    label="Platform"
+                    value={
+                      systemVersion
+                        ? `${systemVersion.runtime.platform}/${systemVersion.runtime.arch}`
+                        : "—"
+                    }
+                  />
+                  <VersionRow
+                    label="Module bank ref"
+                    value={systemVersion?.moduleBank.ref || "—"}
+                  />
+                  <VersionRow
+                    label="GitOps branch"
+                    value={
+                      systemVersion
+                        ? systemVersion.gitops.repoConfigured
+                          ? systemVersion.gitops.branch
+                          : "not configured"
+                        : "—"
+                    }
+                  />
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
     </AppShell>

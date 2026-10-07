@@ -666,6 +666,26 @@ export function useScaleCluster() {
   });
 }
 
+// ─── System ─────────────────────────────────────────────────────────────────
+
+export interface SystemVersionInfo {
+  core: { name: string; version: string };
+  cli: { name: string; version: string | null; root: string };
+  runtime: { node: string; platform: string; arch: string };
+  terraform: { binary: string; version: string | null };
+  moduleBank: { source: string; ref: string };
+  gitops: { branch: string; repoConfigured: boolean };
+}
+
+/** Running control-plane versions — GET /api/v1/system/version */
+export function useSystemVersion() {
+  return useQuery({
+    queryKey: ["system", "version"],
+    queryFn: () => gridFetch<SystemVersionInfo>("/system/version"),
+    staleTime: 60_000,
+  });
+}
+
 // ─── Monitoring Hooks ───────────────────────────────────────────────────────
 
 export interface InfraHealthResponse {
