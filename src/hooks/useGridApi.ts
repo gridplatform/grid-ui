@@ -30,6 +30,7 @@ import type {
   TimeSeriesData,
   CreateReleaseRequest,
   Project,
+  HealthStatus,
 } from "@/types/api";
 
 // ─── Configuration ──────────────────────────────────────────────────────────
@@ -667,6 +668,29 @@ export function useScaleCluster() {
 
 // ─── Monitoring Hooks ───────────────────────────────────────────────────────
 
+export interface InfraHealthResponse {
+  infrastructureId: string;
+  name: string;
+  environment: string;
+  provider: string;
+  project?: string;
+  resourceStatus: string;
+  status: HealthStatus;
+  updatedAt: string;
+  message: string;
+  source: "inventory";
+}
+
+export interface MonitoringDashboardItem {
+  id: string;
+  name: string;
+  environment: string;
+  provider: string;
+  resourceStatus: string;
+  health: HealthStatus;
+  updatedAt: string;
+}
+
 /**
  * Fetch alerts
  * GET /api/v1/monitoring/alerts
@@ -680,6 +704,31 @@ export function useAlerts() {
 }
 
 /**
+ * Live health for one infrastructure unit
+ * GET /api/v1/monitoring/health/:infra
+ */
+export function useInfraHealth(infraId: string) {
+  return useQuery({
+    queryKey: ["monitoring", "health", infraId],
+    queryFn: () => gridFetch<InfraHealthResponse>(`/monitoring/health/${infraId}`),
+    enabled: !!infraId,
+    refetchInterval: 15_000,
+  });
+}
+
+/**
+ * Inventory-backed monitoring dashboards list
+ * GET /api/v1/monitoring/dashboards
+ */
+export function useMonitoringDashboards() {
+  return useQuery({
+    queryKey: ["monitoring", "dashboards"],
+    queryFn: () => gridFetch<MonitoringDashboardItem[]>("/monitoring/dashboards"),
+    refetchInterval: 30_000,
+  });
+}
+
+/**
  * Fetch metrics for an infrastructure resource
  * GET /api/v1/monitoring/metrics/:infra
  */
@@ -688,6 +737,7 @@ export function useMetrics(infraId: string, range: "1h" | "6h" | "24h" | "7d" = 
     queryKey: ["monitoring", "metrics", infraId, range],
     queryFn: () => gridFetch<TimeSeriesData[]>(`/monitoring/metrics/${infraId}?range=${range}`),
     enabled: !!infraId,
+    refetchInterval: 30_000,
   });
 }
 

@@ -1,13 +1,23 @@
 import { useParams, useNavigate } from "react-router-dom";
 import AppShell from "@/components/AppShell";
 import { ArrowLeft, Activity } from "lucide-react";
-import { useInfrastructure, useMetrics } from "@/hooks/useGridApi";
+import { useInfraHealth, useInfrastructure, useMetrics } from "@/hooks/useGridApi";
+import type { HealthStatus } from "@/types/api";
+
+const healthColors: Record<HealthStatus, string> = {
+  healthy: "bg-success/10 text-success",
+  warning: "bg-warning/10 text-warning",
+  critical: "bg-destructive/10 text-destructive",
+  unknown: "bg-muted text-muted-foreground",
+};
 
 const MonitoringDetailPage = () => {
   const { resourceId } = useParams();
   const navigate = useNavigate();
-  const { data: infra, isLoading, error } = useInfrastructure(resourceId || "");
-  const { data: metrics = [], isLoading: metricsLoading } = useMetrics(resourceId || "", "1h");
+  const id = resourceId || "";
+  const { data: infra, isLoading, error } = useInfrastructure(id);
+  const { data: health, isLoading: healthLoading } = useInfraHealth(id);
+  const { data: metrics = [], isLoading: metricsLoading } = useMetrics(id, "1h");
 
   return (
     <AppShell activeTab="monitoring">
@@ -28,16 +38,44 @@ const MonitoringDetailPage = () => {
           <>
             <div className="flex items-center gap-3">
               <Activity className="w-5 h-5 text-muted-foreground" />
-              <div>
+              <div className="min-w-0 flex-1">
                 <h1 className="text-lg font-semibold text-foreground">{infra.name}</h1>
                 <p className="text-sm text-muted-foreground">
                   {infra.environment} · {infra.provider} · {infra.status}
                 </p>
               </div>
+              {health && (
+                <span
+                  className={`text-xs font-medium px-2.5 py-1 rounded-full ${
+                    healthColors[health.status] || healthColors.unknown
+                  }`}
+                >
+                  {health.status}
+                </span>
+              )}
+            </div>
+
+            <div className="rounded-lg border border-border bg-card p-4 space-y-2">
+              <h2 className="text-sm font-medium text-foreground">Live health</h2>
+              {healthLoading ? (
+                <p className="text-sm text-muted-foreground">Loading health…</p>
+              ) : health ? (
+                <>
+                  <p className="text-sm text-foreground">{health.message}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Source: {health.source} · Updated {new Date(health.updatedAt).toLocaleString()}
+                  </p>
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">Health unavailable.</p>
+              )}
             </div>
 
             <div className="rounded-lg border border-border bg-card p-4">
-              <h2 className="text-sm font-medium text-foreground mb-3">Metrics (1h)</h2>
+              <h2 className="text-sm font-medium text-foreground mb-3">Lifecycle metrics</h2>
+              <p className="text-xs text-muted-foreground mb-3">
+                Lifecycle metrics from inventory and the latest deployment.
+              </p>
               {metricsLoading ? (
                 <p className="text-sm text-muted-foreground">Loading metrics…</p>
               ) : metrics.length === 0 ? (
@@ -47,10 +85,21 @@ const MonitoringDetailPage = () => {
               ) : (
                 <div className="space-y-3">
                   {metrics.map((series) => (
-                    <div key={series.metric} className="text-sm">
+                    <div key={series.metric} className="text-sm border border-border rounded-md p-3">
                       <p className="font-medium text-foreground">{series.metric}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {series.data.length} data points
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {Object.entries(series.labels)
+                          .map(([k, v]) => `${k}=${v}`)
+                          .join(" · ")}
+                      </p>
+                      <p className="text-xs text-foreground mt-2">
+                        Latest:{" "}
+                        <span className="font-mono">
+                          {series.data[series.data.length - 1]?.value ?? "—"}
+                        </span>{" "}
+                        at {series.data[series.data.length - 1]?.timestamp
+                          ? new Date(series.data[series.data.length - 1]!.timestamp).toLocaleString()
+                          : "—"}
                       </p>
                     </div>
                   ))}

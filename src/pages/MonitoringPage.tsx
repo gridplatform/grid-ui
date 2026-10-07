@@ -2,33 +2,44 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppShell from "@/components/AppShell";
 import { Activity, ChevronRight, Search, Server } from "lucide-react";
-import { useEnvironments, useInfrastructures } from "@/hooks/useGridApi";
+import { useEnvironments, useMonitoringDashboards } from "@/hooks/useGridApi";
+import type { HealthStatus } from "@/types/api";
 
-const statusColors: Record<string, string> = {
-  running: "bg-success/10 text-success",
-  stopped: "bg-muted text-muted-foreground",
-  error: "bg-destructive/10 text-destructive",
-  degraded: "bg-warning/10 text-warning",
-  pending: "bg-muted text-muted-foreground",
+const healthColors: Record<HealthStatus, string> = {
+  healthy: "bg-success/10 text-success",
+  warning: "bg-warning/10 text-warning",
+  critical: "bg-destructive/10 text-destructive",
+  unknown: "bg-muted text-muted-foreground",
 };
 
 const MonitoringPage = () => {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
   const [envFilter, setEnvFilter] = useState("");
-  const { data: infrastructures = [], isLoading, error } = useInfrastructures();
+  const { data: dashboards = [], isLoading, error } = useMonitoringDashboards();
   const { data: environments = [] } = useEnvironments();
 
   const filtered = useMemo(() => {
-    return infrastructures.filter((r) => {
+    return dashboards.filter((r) => {
       const matchSearch =
         !searchQuery ||
         r.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        r.type.toLowerCase().includes(searchQuery.toLowerCase());
+        r.provider.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        r.health.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        r.resourceStatus.toLowerCase().includes(searchQuery.toLowerCase());
       const matchEnv = !envFilter || r.environment === envFilter;
       return matchSearch && matchEnv;
     });
-  }, [infrastructures, searchQuery, envFilter]);
+  }, [dashboards, searchQuery, envFilter]);
+
+  const counts = useMemo(() => {
+    return {
+      healthy: dashboards.filter((d) => d.health === "healthy").length,
+      warning: dashboards.filter((d) => d.health === "warning").length,
+      critical: dashboards.filter((d) => d.health === "critical").length,
+      unknown: dashboards.filter((d) => d.health === "unknown").length,
+    };
+  }, [dashboards]);
 
   return (
     <AppShell activeTab="monitoring">
@@ -39,13 +50,29 @@ const MonitoringPage = () => {
             Monitoring
           </h1>
           <p className="text-xs text-muted-foreground mt-1">
-            Infrastructure from grid-core. Open a row for metrics when available.
+            Infrastructure health from the control-plane inventory.
           </p>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {(
+            [
+              ["Healthy", counts.healthy, healthColors.healthy],
+              ["Warning", counts.warning, healthColors.warning],
+              ["Critical", counts.critical, healthColors.critical],
+              ["Unknown", counts.unknown, healthColors.unknown],
+            ] as const
+          ).map(([label, count, style]) => (
+            <div key={label} className="p-3 rounded-lg border border-border bg-card">
+              <p className={`text-xl font-semibold ${style.split(" ")[1]}`}>{count}</p>
+              <p className="text-xs text-muted-foreground">{label}</p>
+            </div>
+          ))}
         </div>
 
         {error && (
           <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-            {error instanceof Error ? error.message : "Failed to load infrastructures"}
+            {error instanceof Error ? error.message : "Failed to load monitoring dashboards"}
           </div>
         )}
 
@@ -98,17 +125,17 @@ const MonitoringPage = () => {
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-foreground truncate">{resource.name}</p>
                       <p className="text-xs text-muted-foreground">
-                        {resource.type} · {resource.environment} · {resource.region}
+                        {resource.provider} · {resource.environment} · {resource.resourceStatus}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3 flex-shrink-0">
                     <span
                       className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                        statusColors[resource.status] || statusColors.pending
+                        healthColors[resource.health] || healthColors.unknown
                       }`}
                     >
-                      {resource.status}
+                      {resource.health}
                     </span>
                     <ChevronRight className="w-4 h-4 text-muted-foreground" />
                   </div>
