@@ -23,6 +23,8 @@ import {
   usePendingApprovals,
   useReleases,
   useCancelRelease,
+  useApproveRelease,
+  useRejectRelease,
 } from "@/hooks/useGridApi";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
@@ -52,6 +54,7 @@ const modeLabels: Record<ReleaseMode, string> = {
 const ReleasesPage = () => {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
+  const canApprove = user?.role === "admin" || user?.role === "maintainer";
   const { projectSlug, selectedEnv, selectedProject } = useWorkspace();
   const { data: releases = [], isLoading, error } = useReleases();
   const { data: approvals = [] } = usePendingApprovals();
@@ -64,6 +67,8 @@ const ReleasesPage = () => {
   });
   const createRelease = useCreateRelease();
   const cancelRelease = useCancelRelease();
+  const approveRelease = useApproveRelease();
+  const rejectRelease = useRejectRelease();
 
   const [envFilter, setEnvFilter] = useState("");
   const [showModal, setShowModal] = useState(false);
@@ -202,6 +207,30 @@ const ReleasesPage = () => {
     }
   };
 
+  const handleApprove = async (release: Release, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!canApprove) return;
+    try {
+      await approveRelease.mutateAsync({ id: release.id });
+      setSubmitNote(`Approved “${release.name}” — it will queue for execution.`);
+    } catch (err) {
+      setSubmitNote(err instanceof Error ? err.message : "Approve failed");
+    }
+  };
+
+  const handleReject = async (release: Release, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!canApprove) return;
+    const comment = window.prompt(`Reject “${release.name}”? Optional comment:`);
+    if (comment === null) return;
+    try {
+      await rejectRelease.mutateAsync({ id: release.id, comment: comment || "Rejected" });
+      setSubmitNote(`Rejected “${release.name}”.`);
+    } catch (err) {
+      setSubmitNote(err instanceof Error ? err.message : "Reject failed");
+    }
+  };
+
   const renderRow = (release: Release) => {
     const sc = statusConfig[release.status] ?? {
       label: release.status,
@@ -216,6 +245,10 @@ const ReleasesPage = () => {
         release.status === "deploying" ||
         release.status === "pending_approval" ||
         release.status === "approved");
+    const showApprove =
+      canApprove &&
+      release.status === "pending_approval" &&
+      release.createdBy?.toLowerCase() !== user?.email?.toLowerCase();
     return (
       <div key={release.id} className="border-b border-border last:border-b-0">
         <div className="w-full flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-4 py-3">
@@ -251,6 +284,26 @@ const ReleasesPage = () => {
             </div>
           </button>
           <div className="flex items-center gap-2 flex-shrink-0 pl-7 sm:pl-0">
+            {showApprove && (
+              <>
+                <button
+                  type="button"
+                  onClick={(e) => void handleApprove(release, e)}
+                  disabled={approveRelease.isPending}
+                  className="text-xs px-2 py-1 rounded-md border border-success/40 text-success hover:bg-success/10 disabled:opacity-50"
+                >
+                  Approve
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => void handleReject(release, e)}
+                  disabled={rejectRelease.isPending}
+                  className="text-xs px-2 py-1 rounded-md border border-border text-muted-foreground hover:bg-secondary disabled:opacity-50"
+                >
+                  Reject
+                </button>
+              </>
+            )}
             {canCancel && (
               <button
                 type="button"

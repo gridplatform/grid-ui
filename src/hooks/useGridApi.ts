@@ -557,6 +557,7 @@ export function usePendingApprovals() {
   return useQuery({
     queryKey: ["approvals", "pending"],
     queryFn: () => gridFetch<Approval[]>("/approvals"),
+    refetchInterval: 10_000,
   });
 }
 
@@ -820,6 +821,30 @@ export function useLogs(query: LogQuery) {
 }
 
 // ─── Environment Hooks ──────────────────────────────────────────────────────
+
+/**
+ * Admin: set whether an environment requires release approval
+ * PATCH /api/v1/environments/:slug/approval
+ */
+export function useUpdateEnvironmentApproval() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      slug,
+      approvalRequired,
+    }: {
+      slug: string;
+      approvalRequired: boolean;
+    }) =>
+      gridFetch<Environment>(`/environments/${encodeURIComponent(slug)}/approval`, {
+        method: "PATCH",
+        body: JSON.stringify({ approvalRequired }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["environments"] });
+    },
+  });
+}
 
 /**
  * Fetch environments (optionally scoped to a project slug)

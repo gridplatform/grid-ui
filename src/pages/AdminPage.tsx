@@ -9,6 +9,7 @@ import {
   useCurrentUser,
   useEnvironments,
   useSystemVersion,
+  useUpdateEnvironmentApproval,
 } from "@/hooks/useGridApi";
 
 type AdminTab = "users" | "keys" | "audit" | "environments" | "sources" | "about";
@@ -48,6 +49,20 @@ const AdminPage = () => {
     isLoading: versionLoading,
     error: versionError,
   } = useSystemVersion();
+  const updateApproval = useUpdateEnvironmentApproval();
+  const [policyNote, setPolicyNote] = useState<string | null>(null);
+
+  const toggleApproval = async (slug: string, approvalRequired: boolean) => {
+    setPolicyNote(null);
+    try {
+      await updateApproval.mutateAsync({ slug, approvalRequired });
+      setPolicyNote(
+        `${slug}: approval ${approvalRequired ? "required" : "not required"} for apply/destroy/custom`
+      );
+    } catch (err) {
+      setPolicyNote(err instanceof Error ? err.message : "Failed to update approval policy");
+    }
+  };
 
   useEffect(() => {
     const t = searchParams.get("tab") as AdminTab | null;
@@ -200,11 +215,23 @@ const AdminPage = () => {
 
           {tab === "environments" && (
             <>
-              <div className="p-4 border-b border-border flex items-center justify-between">
-                <h2 className="text-sm font-medium text-foreground">Environments</h2>
-                <span className="text-xs text-muted-foreground">
-                  {envsLoading ? "loading…" : `${environments.length} envs`}
-                </span>
+              <div className="p-4 border-b border-border space-y-1">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="text-sm font-medium text-foreground">Environments</h2>
+                  <span className="text-xs text-muted-foreground">
+                    {envsLoading ? "loading…" : `${environments.length} envs`}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Environments are discovered from desired-state folders
+                  (projects/&lt;app&gt;/&lt;cloud&gt;/&lt;env&gt;/). Toggle approval for any of them —
+                  including development or custom env names. Apply, destroy, and custom releases
+                  respect this setting; plan does not. Until you set a policy, staging/production
+                  default on and development defaults off.
+                </p>
+                {policyNote && (
+                  <p className="text-xs text-muted-foreground">{policyNote}</p>
+                )}
               </div>
               {!envsLoading && environments.length === 0 ? (
                 <div className="p-8 text-center text-sm text-muted-foreground">
@@ -228,9 +255,16 @@ const AdminPage = () => {
                             : ` · canonical · ${env.unitCount ?? 0} units`}
                         </p>
                       </div>
-                      <span className="text-xs text-muted-foreground flex-shrink-0">
-                        {env.approvalRequired ? "approval required" : "auto"}
-                      </span>
+                      <label className="flex items-center gap-2 flex-shrink-0 text-xs text-foreground cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="rounded border-border"
+                          checked={Boolean(env.approvalRequired)}
+                          disabled={updateApproval.isPending || me?.role !== "admin"}
+                          onChange={(e) => void toggleApproval(env.slug, e.target.checked)}
+                        />
+                        Require approval
+                      </label>
                     </div>
                   ))}
                 </div>
