@@ -16,5 +16,7 @@ jobs:
           node-version: "20"
           cache: npm
       - run: npm ci
+      # .env is gitignored; production build requires it (same defaults as .env.example)
+      - run: cp .env.example .env
       - run: npm run build
       - run: npm test

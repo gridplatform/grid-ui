@@ -29,24 +29,68 @@ function parseEnvFile(text: string): Record<string, string> {
   return out;
 }
 
+function isCi(): boolean {
+  return (
+    process.env.CI === "true" ||
+    process.env.CI === "1" ||
+    process.env.GITHUB_ACTIONS === "true"
+  );
+}
+
 /**
  * One env file per mode (same rule as grid-core):
  * - development → `.env.development` only
  * - production  → `.env` only
+ *
+ * CI: `.env` is gitignored — fall back to committed `.env.example` (same values).
  */
-function loadSoleEnv(mode: string): Record<string, string> {
-  const file =
-    mode === "production"
-      ? path.resolve(__dirname, ".env")
-      : path.resolve(__dirname, ".env.development");
-  if (!existsSync(file)) return {};
-  return parseEnvFile(readFileSync(file, "utf8"));
+function loadSoleEnv(mode: string): {
+  sole: Record<string, string>;
+  usedExampleFallback: boolean;
+} {
+  if (mode !== "production") {
+    const devFile = path.resolve(__dirname, ".env.development");
+    if (!existsSync(devFile)) return { sole: {}, usedExampleFallback: false };
+    return {
+      sole: parseEnvFile(readFileSync(devFile, "utf8")),
+      usedExampleFallback: false,
+    };
+  }
+
+  const envFile = path.resolve(__dirname, ".env");
+  if (existsSync(envFile)) {
+    return {
+      sole: parseEnvFile(readFileSync(envFile, "utf8")),
+      usedExampleFallback: false,
+    };
+  }
+
+  const example = path.resolve(__dirname, ".env.example");
+  if (isCi() && existsSync(example)) {
+    console.warn(
+      "[grid-ui] CI: .env missing — using .env.example (VITE_GRID_API_URL=/api/v1)"
+    );
+    return {
+      sole: parseEnvFile(readFileSync(example, "utf8")),
+      usedExampleFallback: true,
+    };
+  }
+
+  // Allow explicit env injection (Docker ARG / workflow env) without a file.
+  if (process.env.VITE_GRID_API_URL?.trim()) {
+    return {
+      sole: { VITE_GRID_API_URL: process.env.VITE_GRID_API_URL.trim() },
+      usedExampleFallback: false,
+    };
+  }
+
+  return { sole: {}, usedExampleFallback: false };
 }
 
 export default defineConfig(({ mode }) => {
-  const sole = loadSoleEnv(mode);
+  const { sole, usedExampleFallback } = loadSoleEnv(mode);
   if (mode === "production") {
-    assertUiProductionEnv(__dirname, sole);
+    assertUiProductionEnv(__dirname, sole, { usedExampleFallback });
   }
 
   const defineEnv = Object.fromEntries(
