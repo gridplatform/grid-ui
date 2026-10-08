@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # Grid Console — static build served by nginx (proxies /api → core)
-FROM node:20-alpine AS build
+FROM node:24-alpine AS build
 
 WORKDIR /app
 COPY package.json package-lock.json* ./
