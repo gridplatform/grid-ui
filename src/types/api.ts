@@ -261,7 +261,7 @@ export interface Approval {
   id: string;
   releaseId: string;
   status: "pending" | "approved" | "rejected";
-  requiredRole: "developer" | "maintainer" | "admin";
+  requiredRole: "developer" | "maintainer" | "admin" | "superadmin";
   requestedBy: string;
   requestedAt: string;
   reviewedBy?: string;
@@ -557,7 +557,7 @@ export interface Project {
 
 // ─── User & Auth Types ──────────────────────────────────────────────────────
 
-export type UserRole = "developer" | "maintainer" | "admin";
+export type UserRole = "developer" | "maintainer" | "admin" | "superadmin";
 
 /**
  * User

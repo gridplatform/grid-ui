@@ -6,6 +6,7 @@ import {
   useSyncGitOps,
   useModuleBankStatus,
   useSyncModuleBank,
+  useSaveModuleBankSettings,
 } from "@/hooks/useGridApi";
 
 /**
@@ -18,6 +19,7 @@ export function AdminSourcesPanel() {
   const syncDesiredState = useSyncGitOps();
   const { data: moduleBank, refetch: refetchModuleBank } = useModuleBankStatus();
   const syncModuleBank = useSyncModuleBank();
+  const saveModuleBankSettings = useSaveModuleBankSettings();
 
   const [repoUrl, setRepoUrl] = useState("");
   const [branch, setBranch] = useState("main");
@@ -27,6 +29,9 @@ export function AdminSourcesPanel() {
   const [hydrated, setHydrated] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [moduleNote, setModuleNote] = useState<string | null>(null);
+  const [moduleVersion, setModuleVersion] = useState("main");
+  const [moduleSyncIntervalSec, setModuleSyncIntervalSec] = useState(20);
+  const [moduleHydrated, setModuleHydrated] = useState(false);
 
   useEffect(() => {
     if (hydrated || !status?.settings) return;
@@ -67,17 +72,42 @@ export function AdminSourcesPanel() {
     }
   };
 
+  useEffect(() => {
+    if (!moduleBank || moduleHydrated) return;
+    setModuleVersion(moduleBank.version || moduleBank.ref || "main");
+    setModuleSyncIntervalSec(
+      typeof moduleBank.syncIntervalSec === "number" ? moduleBank.syncIntervalSec : 20
+    );
+    setModuleHydrated(true);
+  }, [moduleBank, moduleHydrated]);
+
   const handleModuleBankSync = async () => {
     try {
-      const result = await syncModuleBank.mutateAsync();
+      const result = await syncModuleBank.mutateAsync({ version: moduleVersion });
       setModuleNote(
-        `Module bank synced` +
+        `Module bank synced · version ${result.version || moduleVersion}` +
           (result.lastCommit ? ` · ${result.lastCommit.slice(0, 8)}` : "") +
           (result.lastCommitMessage ? ` · ${result.lastCommitMessage}` : "")
       );
       await refetchModuleBank();
     } catch (e) {
       setModuleNote(e instanceof Error ? e.message : "Module bank sync failed");
+    }
+  };
+
+  const handleSaveModuleBank = async () => {
+    try {
+      const result = await saveModuleBankSettings.mutateAsync({
+        version: moduleVersion,
+        syncIntervalSec: moduleSyncIntervalSec,
+      });
+      setModuleNote(
+        `Saved · version ${result.settings.version} · auto-sync every ${result.settings.syncIntervalSec}s` +
+          (result.status.lastCommit ? ` · ${result.status.lastCommit.slice(0, 8)}` : "")
+      );
+      await refetchModuleBank();
+    } catch (e) {
+      setModuleNote(e instanceof Error ? e.message : "Save module bank settings failed");
     }
   };
 
@@ -192,14 +222,21 @@ export function AdminSourcesPanel() {
           <div>
             <h3 className="text-sm font-medium text-foreground">Terraform module bank</h3>
             <p className="text-xs text-muted-foreground mt-1">
-              Local checkout under <code className="font-mono">GRID_DATA_DIR/module-bank</code>. Sync
-              when upstream modules change — generates never re-fetch from Git.
+              Pick the <strong>module version</strong> to sync into{" "}
+              <code className="font-mono">GRID_DATA_DIR/module-bank</code>. Generated Terraform uses
+              the same version in <code className="font-mono">git::…?ref=</code>. Auto-sync keeps the
+              checkout aligned (default every 20s; overlapping syncs are skipped).
             </p>
           </div>
           <button
             type="button"
             onClick={() => void handleModuleBankSync()}
-            disabled={syncModuleBank.isPending || moduleBank?.remote === false}
+            disabled={
+              syncModuleBank.isPending ||
+              saveModuleBankSettings.isPending ||
+              moduleBank?.syncInProgress === true ||
+              moduleBank?.remote === false
+            }
             className="inline-flex items-center gap-2 px-3 py-1.5 text-sm rounded-md border border-border hover:bg-secondary disabled:opacity-50"
           >
             <RefreshCw
@@ -213,10 +250,70 @@ export function AdminSourcesPanel() {
             {moduleNote}
           </p>
         )}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <label className="block text-xs text-muted-foreground">
+            Module version
+            <select
+              value={moduleVersion}
+              onChange={(e) => setModuleVersion(e.target.value)}
+              disabled={moduleBank?.remote === false}
+              className="mt-1 w-full px-3 py-2 rounded-md bg-secondary border border-border text-sm text-foreground"
+            >
+              {(moduleBank?.availableVersions?.length
+                ? moduleBank.availableVersions
+                : [moduleVersion, "main"]
+              ).map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-xs text-muted-foreground">
+            Auto-sync interval (seconds, 0=off)
+            <input
+              type="number"
+              min={0}
+              value={moduleSyncIntervalSec}
+              onChange={(e) => setModuleSyncIntervalSec(Number(e.target.value) || 0)}
+              disabled={moduleBank?.remote === false}
+              className="mt-1 w-full px-3 py-2 rounded-md bg-secondary border border-border text-sm text-foreground"
+            />
+          </label>
+        </div>
+        <label className="block text-xs text-muted-foreground">
+          Or type a tag / branch / commit
+          <input
+            value={moduleVersion}
+            onChange={(e) => setModuleVersion(e.target.value)}
+            disabled={moduleBank?.remote === false}
+            placeholder="v0.1.0"
+            className="mt-1 w-full px-3 py-2 rounded-md bg-secondary border border-border text-sm text-foreground font-mono"
+          />
+        </label>
+        <button
+          type="button"
+          onClick={() => void handleSaveModuleBank()}
+          disabled={
+            saveModuleBankSettings.isPending ||
+            syncModuleBank.isPending ||
+            moduleBank?.remote === false
+          }
+          className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 inline-flex items-center gap-1.5 disabled:opacity-50"
+        >
+          <Save className="w-3.5 h-3.5" />
+          {saveModuleBankSettings.isPending ? "Saving…" : "Save version & sync"}
+        </button>
         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
           <div>
             <dt className="text-muted-foreground">Source</dt>
             <dd className="font-mono text-foreground break-all">{moduleBank?.source || "—"}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Active version</dt>
+            <dd className="font-mono text-foreground">
+              {moduleBank?.version || moduleBank?.ref || "—"}
+            </dd>
           </div>
           <div>
             <dt className="text-muted-foreground">Local path</dt>
@@ -234,6 +331,14 @@ export function AdminSourcesPanel() {
           <div>
             <dt className="text-muted-foreground">Last sync</dt>
             <dd className="text-foreground">{moduleBank?.lastSyncAt || "—"}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Auto-sync</dt>
+            <dd className="text-foreground">
+              {moduleBank?.syncIntervalSec
+                ? `every ${moduleBank.syncIntervalSec}s`
+                : "off"}
+            </dd>
           </div>
         </dl>
         {moduleBank?.lastSyncError && (

@@ -12,10 +12,13 @@ dist
 dist-ssr
 *.local
 
-# Env (keep .env.example tracked)
+# Env (keep examples / shared development defaults tracked)
 .env
 .env.*
 !.env.example
+!.env.development
+!.env.production.example
+!.vite-empty-env/
 
 # Editor directories and files
 .vscode/*

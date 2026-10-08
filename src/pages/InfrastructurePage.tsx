@@ -199,7 +199,7 @@ const TABLE_COLS =
 const InfrastructurePage = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const isAdmin = user?.role === "admin";
+  const isAdmin = user?.role === "admin" || user?.role === "superadmin";
   const { envSlug, selectedProject, selectedEnv, projectSlug } = useWorkspace();
   const [engine, setEngine] = useState<DeployEngine>("terraform");
   const [searchQuery, setSearchQuery] = useState("");

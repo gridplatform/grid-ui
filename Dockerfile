@@ -8,10 +8,12 @@ COPY package.json package-lock.json* ./
 RUN npm ci
 COPY . .
 
-# Relative URL — nginx in this image proxies /api to the core service
+# Relative URL — nginx in this image proxies /api to the core service.
+# Production Vite gate requires a real `.env` file (not only process ENV).
 ARG VITE_GRID_API_URL=/api/v1
 ENV VITE_GRID_API_URL=$VITE_GRID_API_URL
-RUN npm run build
+RUN printf 'VITE_GRID_API_URL=%s\n' "$VITE_GRID_API_URL" > .env \
+  && npm run build
 
 FROM nginx:1.27-alpine
 COPY install/nginx-default.conf /etc/nginx/conf.d/default.conf

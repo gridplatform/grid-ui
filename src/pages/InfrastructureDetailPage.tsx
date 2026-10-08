@@ -44,7 +44,7 @@ const InfrastructureDetailPage = () => {
   const { resourceId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const isAdmin = user?.role === "admin";
+  const isAdmin = user?.role === "admin" || user?.role === "superadmin";
 
   const { data: liveInfra, isLoading: liveLoading, refetch } = useInfrastructure(resourceId || "");
   const updateInfra = useUpdateInfrastructure();

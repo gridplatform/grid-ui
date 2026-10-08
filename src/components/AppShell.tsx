@@ -46,7 +46,7 @@ const AppShell = ({ children, activeTab = "overview", isAdmin: isAdminProp }: Ap
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const isAdmin = isAdminProp ?? user?.role === "admin";
+  const isAdmin = isAdminProp ?? (user?.role === "admin" || user?.role === "superadmin");
   const {
     projects,
     projectEnvironments,

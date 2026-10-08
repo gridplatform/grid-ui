@@ -29,6 +29,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { DeploymentLiveLogs } from "@/components/DeploymentLiveLogs";
+import { canApproveReleases, isAdminLike } from "@/lib/rbac";
 import type { Release, ReleaseMode, ReleaseStatus } from "@/types/api";
 
 const statusConfig: Partial<
@@ -53,8 +54,8 @@ const modeLabels: Record<ReleaseMode, string> = {
 
 const ReleasesPage = () => {
   const { user } = useAuth();
-  const isAdmin = user?.role === "admin";
-  const canApprove = user?.role === "admin" || user?.role === "maintainer";
+  const isAdmin = isAdminLike(user?.role);
+  const canApprove = canApproveReleases(user?.role);
   const { projectSlug, selectedEnv, selectedProject } = useWorkspace();
   const { data: releases = [], isLoading, error } = useReleases();
   const { data: approvals = [] } = usePendingApprovals();

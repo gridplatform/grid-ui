@@ -371,6 +371,14 @@ export type ModuleBankStatus = {
   lastSyncError?: string;
   lastCommit?: string;
   lastCommitMessage?: string;
+  /** Active module bank version (tag/branch/commit). */
+  version?: string;
+  /** Auto-sync interval (seconds). */
+  syncIntervalSec?: number;
+  /** True while a sync is running — UI should not start another. */
+  syncInProgress?: boolean;
+  /** Tags/versions discovered from the remote. */
+  availableVersions?: string[];
 };
 
 /** Local checkout of grid-terraform (separate from desired-state config sync). */
@@ -378,15 +386,32 @@ export function useModuleBankStatus() {
   return useQuery({
     queryKey: ["module-bank", "status"],
     queryFn: () => gridFetch<ModuleBankStatus>("/module-bank/status"),
-    refetchInterval: 30_000,
+    refetchInterval: 20_000,
   });
 }
 
 export function useSyncModuleBank() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () =>
-      gridFetch<ModuleBankStatus>("/module-bank/sync", { method: "POST" }),
+    mutationFn: (body?: { version?: string }) =>
+      gridFetch<ModuleBankStatus>("/module-bank/sync", {
+        method: "POST",
+        body: JSON.stringify(body || {}),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["module-bank"] });
+    },
+  });
+}
+
+export function useSaveModuleBankSettings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { version?: string; syncIntervalSec?: number }) =>
+      gridFetch<{ settings: { version: string; syncIntervalSec: number }; status: ModuleBankStatus }>(
+        "/module-bank/settings",
+        { method: "PATCH", body: JSON.stringify(body) }
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["module-bank"] });
     },

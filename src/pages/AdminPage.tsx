@@ -260,7 +260,10 @@ const AdminPage = () => {
                           type="checkbox"
                           className="rounded border-border"
                           checked={Boolean(env.approvalRequired)}
-                          disabled={updateApproval.isPending || me?.role !== "admin"}
+                          disabled={
+                            updateApproval.isPending ||
+                            (me?.role !== "admin" && me?.role !== "superadmin")
+                          }
                           onChange={(e) => void toggleApproval(env.slug, e.target.checked)}
                         />
                         Require approval
