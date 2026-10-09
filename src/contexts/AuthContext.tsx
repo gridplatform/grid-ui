@@ -68,7 +68,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     const data = (await response.json()) as AuthResponse;
     setAuthToken(data.token);
-    setUser(data.user);
+    // Login body may omit access — always refresh from /auth/me for RBAC domains.
+    try {
+      const me = await fetchMe(data.token);
+      setUser(me);
+    } catch {
+      setUser(data.user);
+    }
     await queryClient.invalidateQueries({ queryKey: ["auth"] });
   }, [queryClient]);
 

@@ -8,6 +8,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { WorkspaceProvider } from "@/contexts/WorkspaceContext";
 import { FeatureGate } from "@/components/FeatureGate";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { RequireAccess } from "@/components/RequireAccess";
 import LoginPage from "./pages/LoginPage";
 import DashboardPage from "./pages/DashboardPage";
 import DeploymentsPage from "./pages/DeploymentsPage";
@@ -29,6 +30,26 @@ function Auth({ children }: { children: React.ReactNode }) {
   return <ProtectedRoute>{children}</ProtectedRoute>;
 }
 
+function Gate({
+  feature,
+  admin,
+  children,
+}: {
+  feature?: Parameters<typeof RequireAccess>[0]["feature"];
+  admin?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <Auth>
+      <FeatureGate feature={feature || "admin"}>
+        <RequireAccess feature={feature} admin={admin}>
+          {children}
+        </RequireAccess>
+      </FeatureGate>
+    </Auth>
+  );
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
@@ -44,112 +65,97 @@ const App = () => (
             <Route
               path="/deployments"
               element={
-                <Auth>
-                  <FeatureGate feature="deployments">
-                    <DeploymentsPage />
-                  </FeatureGate>
-                </Auth>
+                <Gate feature="deployments">
+                  <DeploymentsPage />
+                </Gate>
               }
             />
             <Route
               path="/releases"
               element={
-                <Auth>
-                  <FeatureGate feature="releases">
-                    <ReleasesPage />
-                  </FeatureGate>
-                </Auth>
+                <Gate feature="releases">
+                  <ReleasesPage />
+                </Gate>
               }
             />
             <Route
               path="/infrastructure"
               element={
-                <Auth>
-                  <FeatureGate feature="infrastructure">
-                    <InfrastructurePage />
-                  </FeatureGate>
-                </Auth>
+                <Gate feature="infrastructure">
+                  <InfrastructurePage />
+                </Gate>
               }
             />
             <Route
               path="/infrastructure/:resourceId"
               element={
-                <Auth>
-                  <FeatureGate feature="infrastructure">
-                    <InfrastructureDetailPage />
-                  </FeatureGate>
-                </Auth>
+                <Gate feature="infrastructure">
+                  <InfrastructureDetailPage />
+                </Gate>
               }
             />
-            <Route path="/gitops" element={<Auth><Navigate to="/admin?tab=sources" replace /></Auth>} />
+            <Route
+              path="/gitops"
+              element={
+                <Gate admin>
+                  <Navigate to="/admin?tab=sources" replace />
+                </Gate>
+              }
+            />
             <Route
               path="/monitoring"
               element={
-                <Auth>
-                  <FeatureGate feature="monitoring">
-                    <MonitoringPage />
-                  </FeatureGate>
-                </Auth>
+                <Gate feature="monitoring">
+                  <MonitoringPage />
+                </Gate>
               }
             />
             <Route
               path="/monitoring/:resourceId"
               element={
-                <Auth>
-                  <FeatureGate feature="monitoring">
-                    <MonitoringDetailPage />
-                  </FeatureGate>
-                </Auth>
+                <Gate feature="monitoring">
+                  <MonitoringDetailPage />
+                </Gate>
               }
             />
             <Route
               path="/alerts"
               element={
-                <Auth>
-                  <FeatureGate feature="alerts">
-                    <AlertsPage />
-                  </FeatureGate>
-                </Auth>
+                <Gate feature="alerts">
+                  <AlertsPage />
+                </Gate>
               }
             />
             <Route
               path="/apm"
               element={
-                <Auth>
-                  <FeatureGate feature="apm">
-                    <APMPage />
-                  </FeatureGate>
-                </Auth>
+                <Gate feature="apm">
+                  <APMPage />
+                </Gate>
               }
             />
             <Route
               path="/logging"
               element={
-                <Auth>
-                  <FeatureGate feature="logging">
-                    <LoggingPage />
-                  </FeatureGate>
-                </Auth>
+                <Gate feature="logging">
+                  <LoggingPage />
+                </Gate>
               }
             />
             <Route
               path="/topology"
               element={
-                <Auth>
-                  <FeatureGate feature="topology">
-                    <TopologyPage />
-                  </FeatureGate>
-                </Auth>
+                <Gate feature="topology">
+                  <TopologyPage />
+                </Gate>
               }
             />
             <Route
               path="/admin"
               element={
-                <Auth>
-                  <FeatureGate feature="admin">
-                    <AdminPage />
-                  </FeatureGate>
-                </Auth>
+                <Gate admin>
+                  <AdminPage />
+                </Gate>
               }
             />
             <Route path="*" element={<NotFound />} />

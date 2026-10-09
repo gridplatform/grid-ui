@@ -2,13 +2,14 @@ import { useState } from "react";
 import { ShieldCheck, BookOpen } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { Search, ChevronDown, LogOut, Settings, User } from "lucide-react";
+import { Search, ChevronDown, LogOut, User } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranding } from "@/contexts/BrandingContext";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { productFlags, type FeatureKey } from "@/config/features";
 import { GridLogo } from "@/components/GridLogo";
 import { invalidateWorkspaceQueries, useGridSearch } from "@/hooks/useGridApi";
+import { canAccessFeature, canManageUsers } from "@/lib/rbac";
 import type { Environment } from "@/types/api";
 
 interface AppShellProps {
@@ -46,7 +47,7 @@ const AppShell = ({ children, activeTab = "overview", isAdmin: isAdminProp }: Ap
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const isAdmin = isAdminProp ?? (user?.role === "admin" || user?.role === "superadmin");
+  const isAdmin = isAdminProp ?? canManageUsers(user?.role);
   const {
     projects,
     projectEnvironments,
@@ -92,8 +93,13 @@ const AppShell = ({ children, activeTab = "overview", isAdmin: isAdminProp }: Ap
     { id: "topology", label: "Topology", path: "/topology", feature: "topology" },
   ];
 
-  const tabs = allTabs.filter((tab) => !tab.feature || productFlags[tab.feature]);
-  const showAdmin = isAdmin && productFlags.admin;
+  const tabs = allTabs.filter((tab) => {
+    if (tab.feature && !productFlags[tab.feature]) return false;
+    // Domain / role gate — hide surfaces the user cannot open.
+    if (tab.feature && !canAccessFeature(user, tab.feature)) return false;
+    return true;
+  });
+  const showAdmin = isAdmin && productFlags.admin && canManageUsers(user?.role);
 
   const filteredProjects = projects.filter((p) =>
     p.name.toLowerCase().includes(teamSearch.toLowerCase()) ||
@@ -318,8 +324,12 @@ const AppShell = ({ children, activeTab = "overview", isAdmin: isAdminProp }: Ap
                 <div className="fixed inset-0 z-40" onClick={() => setUserMenuOpen(false)} />
                 <div className="absolute top-full right-0 mt-2 z-50 w-52 bg-popover border border-border rounded-lg shadow-2xl overflow-hidden animate-fade-in">
                   <div className="p-2 border-b border-border">
-                    <p className="text-sm font-medium text-foreground px-2">admin@grid.io</p>
-                    <p className="text-xs text-muted-foreground px-2">Administrator</p>
+                    <p className="text-sm font-medium text-foreground px-2 truncate">
+                      {user?.email || "Signed in"}
+                    </p>
+                    <p className="text-xs text-muted-foreground px-2 capitalize">
+                      {user?.role || "User"}
+                    </p>
                   </div>
                   <div className="p-1">
                     {showAdmin && (
@@ -334,10 +344,6 @@ const AppShell = ({ children, activeTab = "overview", isAdmin: isAdminProp }: Ap
                         Admin
                       </button>
                     )}
-                    <button className="w-full flex items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md transition-colors">
-                      <Settings className="w-3.5 h-3.5" />
-                      Settings
-                    </button>
                     <button
                       onClick={() => {
                         void logout().then(() => navigate("/"));

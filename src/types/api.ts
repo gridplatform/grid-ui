@@ -557,11 +557,73 @@ export interface Project {
 
 // ─── User & Auth Types ──────────────────────────────────────────────────────
 
-export type UserRole = "developer" | "maintainer" | "admin" | "superadmin";
+export type UserRole =
+  | "member"
+  | "developer"
+  | "maintainer"
+  | "admin"
+  | "superadmin";
+
+export type AccessLevel = "none" | "read" | "write";
+
+export type DomainPermissionMap = Record<string, AccessLevel>;
+
+export interface GroupAccessGrant {
+  projects: string[];
+  environments: string[];
+  domains: DomainPermissionMap;
+}
+
+export interface AccessGroup {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  system: boolean;
+  permissions: {
+    alwaysRequireApprovalForWrite: boolean;
+    scope: "global" | "grants";
+    domains: DomainPermissionMap;
+    grants?: GroupAccessGrant[];
+  };
+  memberUserIds: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AccessDomainCatalogEntry {
+  id: string;
+  label: string;
+  description: string;
+  levels: readonly AccessLevel[];
+}
+
+export interface AuthGroupsResponse {
+  groups: AccessGroup[];
+  assignableRoles: UserRole[];
+  predefinedAccessRoles: UserRole[];
+  domainCatalog: AccessDomainCatalogEntry[];
+  accessModel?: {
+    notes?: string[];
+  };
+}
+
+/** Effective access attached by GET /auth/me (and optionally login). */
+export interface EffectiveAccess {
+  role: UserRole;
+  domains: DomainPermissionMap;
+  infrastructure: AccessLevel;
+  kubernetes: AccessLevel;
+  customWriteAlwaysNeedsApproval?: boolean;
+  scope?: "global" | "grants" | "mixed";
+  canApprove?: boolean;
+  canBypassApproval?: boolean;
+  canManageUsers?: boolean;
+}
 
 /**
  * User
- * GET /api/v1/auth/me → User
+ * GET /api/v1/auth/me → User (+ access)
  */
 export interface User {
   id: string;
@@ -569,7 +631,10 @@ export interface User {
   name: string;
   role: UserRole;
   avatarUrl?: string;
+  disabled?: boolean;
   createdAt: string;
+  /** Present on /auth/me — domain map for nav / route gates. */
+  access?: EffectiveAccess;
 }
 
 /**

@@ -158,7 +158,7 @@ export function AdminSourcesPanel() {
           <input
             value={repoUrl}
             onChange={(e) => setRepoUrl(e.target.value)}
-            placeholder="https://github.com/gridplatform/grid-config.git"
+            placeholder="https://github.com/org/desired-state.git"
             className="mt-1 w-full px-3 py-2 rounded-md bg-secondary border border-border text-sm text-foreground"
           />
         </label>
@@ -168,6 +168,7 @@ export function AdminSourcesPanel() {
             <input
               value={branch}
               onChange={(e) => setBranch(e.target.value)}
+              placeholder="main"
               className="mt-1 w-full px-3 py-2 rounded-md bg-secondary border border-border text-sm text-foreground"
             />
           </label>
@@ -176,6 +177,7 @@ export function AdminSourcesPanel() {
             <input
               value={pathPrefix}
               onChange={(e) => setPathPrefix(e.target.value)}
+              placeholder="Optional subdirectory"
               className="mt-1 w-full px-3 py-2 rounded-md bg-secondary border border-border text-sm text-foreground"
             />
           </label>
@@ -287,7 +289,7 @@ export function AdminSourcesPanel() {
             value={moduleVersion}
             onChange={(e) => setModuleVersion(e.target.value)}
             disabled={moduleBank?.remote === false}
-            placeholder="v0.1.0"
+            placeholder="Release tag or branch"
             className="mt-1 w-full px-3 py-2 rounded-md bg-secondary border border-border text-sm text-foreground font-mono"
           />
         </label>

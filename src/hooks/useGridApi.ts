@@ -26,6 +26,10 @@ import type {
   LogQuery,
   Environment,
   User,
+  UserRole,
+  AuthGroupsResponse,
+  AccessGroup,
+  DomainPermissionMap,
   Recommendation,
   TimeSeriesData,
   CreateReleaseRequest,
@@ -964,12 +968,124 @@ export function useCurrentUser() {
 /**
  * GET /api/v1/auth/users — admin only
  */
-export function useAdminUsers() {
+export function useAdminUsers(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ["auth", "users"],
     queryFn: async () => {
       const data = await gridFetch<{ users: User[] }>("/auth/users");
       return data.users;
+    },
+    enabled: options?.enabled !== false,
+  });
+}
+
+export type CreateAdminUserInput = {
+  email: string;
+  password: string;
+  name: string;
+  role: UserRole;
+};
+
+export type PatchAdminUserInput = {
+  name?: string;
+  role?: UserRole;
+  disabled?: boolean;
+  password?: string;
+};
+
+/** POST /api/v1/auth/users — admin only */
+export function useCreateAdminUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateAdminUserInput) =>
+      gridFetch<{ user: User }>("/auth/users", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["auth", "users"] });
+      void qc.invalidateQueries({ queryKey: ["auth", "groups"] });
+      void qc.invalidateQueries({ queryKey: ["audit"] });
+    },
+  });
+}
+
+/** PATCH /api/v1/auth/users/:id — admin only */
+export function usePatchAdminUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: PatchAdminUserInput & { id: string }) =>
+      gridFetch<{ user: User }>(`/auth/users/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["auth", "users"] });
+      void qc.invalidateQueries({ queryKey: ["auth", "groups"] });
+      void qc.invalidateQueries({ queryKey: ["audit"] });
+    },
+  });
+}
+
+/** GET /api/v1/auth/groups — admin only */
+export function useAdminGroups(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: ["auth", "groups"],
+    queryFn: () => gridFetch<AuthGroupsResponse>("/auth/groups"),
+    enabled: options?.enabled !== false,
+  });
+}
+
+export type CreateAccessGroupInput = {
+  slug: string;
+  name: string;
+  description?: string;
+  projects?: string[];
+  environments?: string[];
+  domains?: DomainPermissionMap;
+  memberUserIds?: string[];
+};
+
+/** POST /api/v1/auth/groups — admin only */
+export function useCreateAccessGroup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateAccessGroupInput) =>
+      gridFetch<{ group: AccessGroup }>("/auth/groups", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["auth", "groups"] });
+      void qc.invalidateQueries({ queryKey: ["audit"] });
+    },
+  });
+}
+
+export type PatchAccessGroupInput = {
+  name?: string;
+  description?: string;
+  projects?: string[];
+  environments?: string[];
+  domains?: DomainPermissionMap;
+  memberUserIds?: string[];
+};
+
+/** PATCH /api/v1/auth/groups/:slug — admin only */
+export function usePatchAccessGroup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ slug, ...body }: PatchAccessGroupInput & { slug: string }) =>
+      gridFetch<{ group: AccessGroup }>(
+        `/auth/groups/${encodeURIComponent(slug)}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(body),
+        }
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["auth", "groups"] });
+      void qc.invalidateQueries({ queryKey: ["audit"] });
     },
   });
 }
@@ -977,10 +1093,12 @@ export function useAdminUsers() {
 /**
  * GET /api/v1/audit — admin only
  */
-export function useAuditLog(limit = 200) {
+export function useAuditLog(limit = 200, options?: { enabled?: boolean }) {
+  const enabled = options?.enabled !== false;
   return useQuery({
     queryKey: ["audit", limit],
     queryFn: () => gridFetch<import("@/types/api").AuditEvent[]>(`/audit?limit=${limit}`),
-    refetchInterval: 10_000,
+    refetchInterval: enabled ? 10_000 : false,
+    enabled,
   });
 }

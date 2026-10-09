@@ -672,7 +672,7 @@ const ReleasesPage = () => {
                       rows={3}
                         spellCheck={false}
                       className="w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-                      placeholder="grid status --config-dir ."
+                      placeholder="grid plan --config-dir ."
                     />
                     <p className="text-[11px] text-muted-foreground">
                       Allowed subcommands: status, deploy, destroy, plan, generate, validate, prune,
@@ -689,7 +689,7 @@ const ReleasesPage = () => {
                     value={releaseName}
                     onChange={(e) => setReleaseName(e.target.value)}
                     className="w-full bg-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-                    placeholder="e.g. staging VPC plan"
+                    placeholder="Release name"
                   />
                 </div>
 
