@@ -324,7 +324,7 @@ const InfrastructureDetailPage = () => {
                 )}
               </>
             )}
-            {isLive && liveInfra?.status !== "destroyed" && liveInfra?.status !== "stale" && (
+            {isLive && liveInfra?.status !== "stale" && (
               <>
                 <button
                   onClick={() => void runDrift()}
@@ -510,8 +510,7 @@ const InfrastructureDetailPage = () => {
                 ) : (
                   <button
                     onClick={startEdit}
-                    disabled={liveInfra?.status === "destroyed"}
-                    className="px-3 py-1.5 text-sm text-foreground border border-border rounded-md hover:bg-secondary transition-colors disabled:opacity-50"
+                    className="px-3 py-1.5 text-sm text-foreground border border-border rounded-md hover:bg-secondary transition-colors"
                   >
                     Edit
                   </button>

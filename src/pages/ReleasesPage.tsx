@@ -108,8 +108,9 @@ const ReleasesPage = () => {
   }, [releases, envFilter]);
 
   const providersForEnv = useMemo(() => {
+    // Catalog is config-driven — include every unit (pending after destroy, etc.).
     const list = infrastructures.filter(
-      (i) => i.status !== "destroyed" && (!environment || i.environment === environment)
+      (i) => !environment || i.environment === environment
     );
     return [...new Set(list.map((i) => i.provider).filter(Boolean))].sort((a, b) =>
       a.localeCompare(b)
@@ -117,8 +118,7 @@ const ReleasesPage = () => {
   }, [infrastructures, environment]);
 
   const infraForEnv = useMemo(() => {
-    const list = infrastructures.filter((i) => i.status !== "destroyed");
-    return list.filter((i) => {
+    return infrastructures.filter((i) => {
       if (environment && i.environment !== environment) return false;
       if (provider && i.provider !== provider) return false;
       return true;
