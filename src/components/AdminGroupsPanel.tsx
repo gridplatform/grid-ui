@@ -190,9 +190,10 @@ export function AdminGroupsPanel() {
           </h2>
           <p className="text-xs text-muted-foreground mt-1 max-w-2xl">
             Built-in groups mirror predefined roles (global access). Custom groups
-            grant project × environment × domain access for{" "}
-            <span className="font-mono">member</span> users. Write via custom
-            groups always requires approval.
+            grant project × environment × domain access only for users whose role
+            stays <span className="font-mono">member</span>. Assigning{" "}
+            <span className="font-mono">developer</span> or higher ignores custom
+            group project filters. Write via custom groups always requires approval.
           </p>
         </div>
         <Button

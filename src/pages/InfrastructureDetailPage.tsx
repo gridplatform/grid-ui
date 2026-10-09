@@ -9,6 +9,7 @@ import { type Resource } from "./InfrastructurePage";
 import {
   useApplyInfrastructure,
   useDestroyInfrastructure,
+  ApiError,
   useDriftCheck,
   useInfrastructure,
   usePlanInfrastructure,
@@ -18,6 +19,7 @@ import {
 } from "@/hooks/useGridApi";
 import { useAuth } from "@/contexts/AuthContext";
 import { DeploymentLiveLogs } from "@/components/DeploymentLiveLogs";
+import AccessDeniedPage from "@/pages/AccessDeniedPage";
 import { categoryForResourceType, categoryLabel } from "@/lib/resourceCategory";
 import type { TerraformCategory } from "@/lib/deployContract";
 import type { ReleaseMode } from "@/types/api";
@@ -46,7 +48,12 @@ const InfrastructureDetailPage = () => {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin" || user?.role === "superadmin";
 
-  const { data: liveInfra, isLoading: liveLoading, refetch } = useInfrastructure(resourceId || "");
+  const {
+    data: liveInfra,
+    isLoading: liveLoading,
+    error: liveError,
+    refetch,
+  } = useInfrastructure(resourceId || "");
   const updateInfra = useUpdateInfrastructure();
   const planInfra = usePlanInfrastructure();
   const applyInfra = useApplyInfrastructure();
@@ -140,6 +147,18 @@ const InfrastructureDetailPage = () => {
       <AppShell activeTab="infrastructure">
         <div className="p-6 text-center text-muted-foreground">Loading…</div>
       </AppShell>
+    );
+  }
+
+  if (liveError instanceof ApiError && liveError.isForbidden) {
+    return (
+      <AccessDeniedPage
+        title="Access denied"
+        message={
+          liveError.message ||
+          "You don’t have access to this infrastructure unit for your project and environment grants."
+        }
+      />
     );
   }
 

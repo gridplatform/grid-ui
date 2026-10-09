@@ -608,6 +608,15 @@ export interface AuthGroupsResponse {
   };
 }
 
+/** Project × environment visibility from role / custom groups. */
+export interface WorkspaceAccess {
+  mode: "global" | "grants";
+  /** `["*"]` or concrete project slugs. */
+  projects: string[];
+  /** Project slug (or `*`) → env slugs or `["*"]`. */
+  environments: Record<string, string[]>;
+}
+
 /** Effective access attached by GET /auth/me (and optionally login). */
 export interface EffectiveAccess {
   role: UserRole;
@@ -616,6 +625,7 @@ export interface EffectiveAccess {
   kubernetes: AccessLevel;
   customWriteAlwaysNeedsApproval?: boolean;
   scope?: "global" | "grants" | "mixed";
+  workspace?: WorkspaceAccess;
   canApprove?: boolean;
   canBypassApproval?: boolean;
   canManageUsers?: boolean;

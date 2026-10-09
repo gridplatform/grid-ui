@@ -85,6 +85,59 @@ export function resolveUserAccess(user?: User | null): EffectiveAccess | null {
   return null;
 }
 
+function normSlug(value: string | undefined | null): string {
+  return (value || "").trim().toLowerCase();
+}
+
+/** Client-side mirror of Core workspace project check (API already enforces). */
+export function canAccessProject(
+  user: User | null | undefined,
+  projectSlug: string | undefined | null
+): boolean {
+  if (!user) return false;
+  if (
+    user.role === "developer" ||
+    user.role === "maintainer" ||
+    user.role === "admin" ||
+    user.role === "superadmin"
+  ) {
+    return true;
+  }
+  const ws = resolveUserAccess(user)?.workspace;
+  if (!ws) return false;
+  if (ws.mode === "global" || ws.projects.includes("*")) return true;
+  const p = normSlug(projectSlug);
+  return !!p && ws.projects.includes(p);
+}
+
+export function canAccessEnvironment(
+  user: User | null | undefined,
+  projectSlug: string | undefined | null,
+  environmentSlug: string | undefined | null
+): boolean {
+  if (!user) return false;
+  if (
+    user.role === "developer" ||
+    user.role === "maintainer" ||
+    user.role === "admin" ||
+    user.role === "superadmin"
+  ) {
+    return true;
+  }
+  if (!canAccessProject(user, projectSlug)) return false;
+  const ws = resolveUserAccess(user)?.workspace;
+  if (!ws) return false;
+  const env = normSlug(environmentSlug);
+  if (!env) return false;
+  const p = normSlug(projectSlug);
+  const fromStar = ws.environments["*"] || [];
+  const fromProject = p ? ws.environments[p] || [] : [];
+  const allowed = new Set(
+    [...fromStar, ...fromProject].map(normSlug).filter(Boolean)
+  );
+  return allowed.has("*") || allowed.has(env);
+}
+
 /** True if user may open a product feature (nav + route). */
 export function canAccessFeature(
   user: User | null | undefined,
@@ -107,6 +160,11 @@ export function canAccessFeature(
   if (!rule) return true;
 
   const access = resolveUserAccess(user);
+  // Grant-scoped users with no project/env grants see nothing.
+  if (access?.workspace?.mode === "grants" && !access.workspace.projects.length) {
+    return false;
+  }
+
   const domains = access?.domains;
   const need = rule.need || "read";
   return rule.domains.some((d) => accessAtLeast(domainLevel(domains, d), need));

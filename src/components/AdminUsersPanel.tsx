@@ -143,9 +143,11 @@ export function AdminUsersPanel() {
         <div>
           <h2 className="text-sm font-medium text-foreground">Users</h2>
           <p className="text-xs text-muted-foreground mt-1">
-            Create accounts and assign predefined roles. New users default to{" "}
-            <span className="font-mono">member</span> (no access) until you elevate
-            them or add them to a custom group.
+            Create accounts and assign predefined roles. For project-scoped access,
+            keep the role as <span className="font-mono">member</span> and add them
+            to a custom group —{" "}
+            <span className="font-mono">developer</span> /{" "}
+            <span className="font-mono">maintainer</span> are global.
           </p>
         </div>
         <div className="flex items-center gap-2">

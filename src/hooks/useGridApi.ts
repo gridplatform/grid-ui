@@ -41,6 +41,34 @@ import type {
 
 const API_BASE_URL = import.meta.env.VITE_GRID_API_URL || "/api/v1";
 
+/** Structured API failure — preserves status/code for access-denied UX. */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code: string;
+  readonly details?: Record<string, unknown>;
+
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    details?: Record<string, unknown>
+  ) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.code = code;
+    this.details = details;
+  }
+
+  get isForbidden(): boolean {
+    return this.status === 403 || this.code === "forbidden";
+  }
+
+  get isUnauthorized(): boolean {
+    return this.status === 401;
+  }
+}
+
 // ─── API Client ─────────────────────────────────────────────────────────────
 
 async function gridFetch<T>(endpoint: string, options?: RequestInit): Promise<T> {
@@ -62,8 +90,16 @@ async function gridFetch<T>(endpoint: string, options?: RequestInit): Promise<T>
   }
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: response.statusText }));
-    throw new Error(error.message || `API Error: ${response.status}`);
+    const error = (await response.json().catch(() => ({
+      message: response.statusText,
+      code: "request_error",
+    }))) as { message?: string; code?: string; details?: Record<string, unknown> };
+    throw new ApiError(
+      response.status,
+      error.code || (response.status === 403 ? "forbidden" : "request_error"),
+      error.message || `API Error: ${response.status}`,
+      error.details
+    );
   }
 
   if (response.status === 204) {
