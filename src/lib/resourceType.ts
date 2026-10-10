@@ -1,72 +1,89 @@
 /**
- * Mirror of grid-core resolveResourceType — primary resource wins over SG/subnet helpers.
+ * Mirror of grid-core resourceType — catalog-agnostic unit identity.
+ *
+ * Unit kind = primary. Other resources in the same unit = secondary.
+ * Optional `role: "primary" | "support"` on resources. No product lists.
  */
 
-const SUPPORTING_TYPES = new Set([
-  "security-group",
-  "security_group",
-  "sg",
-  "subnet",
-  "route-table",
-  "route_table",
-  "internet-gateway",
-  "nat-gateway",
-  "elastic-ip",
-  "eip",
-  "network-acl",
-  "nacl",
-  "iam-role",
-  "iam-policy",
-  "instance-profile",
-  "key-pair",
-  "keypair",
-]);
+export type ResourceRole = "primary" | "support";
 
-const PRIMARY_RANK: Record<string, number> = {
-  vm: 100,
-  ec2: 100,
-  "ec2-instance": 100,
-  instance: 95,
-  eks: 90,
-  gke: 90,
-  aks: 90,
-  rds: 85,
-  "s3-bucket": 80,
-  vpc: 70,
-  alb: 65,
-  nlb: 65,
+type ResourceLike = {
+  type?: unknown;
+  role?: unknown;
 };
 
-function rankType(type: string): number {
-  if (SUPPORTING_TYPES.has(type)) return -10;
-  if (PRIMARY_RANK[type] != null) return PRIMARY_RANK[type];
-  if (/^(vm|ec2|instance|eks|gke|aks|rds|aurora)/.test(type)) return 90;
-  if (/security-group|subnet|iam-|route-/.test(type)) return -5;
-  return 10;
+function normalizeType(raw: string): string {
+  return raw.trim().toLowerCase();
+}
+
+function readRole(resource: ResourceLike): ResourceRole | undefined {
+  const role = resource.role;
+  if (role === "primary" || role === "support") return role;
+  return undefined;
+}
+
+export function typesMatchKind(resourceType: string, kind: string): boolean {
+  const a = normalizeType(resourceType);
+  const b = normalizeType(kind);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if (a.startsWith(`${b}-`) || b.startsWith(`${a}-`)) return true;
+  return false;
+}
+
+function resourceTypeOf(resource: ResourceLike): string | undefined {
+  const raw = resource.type;
+  if (typeof raw !== "string" || !raw.trim()) return undefined;
+  return normalizeType(raw);
 }
 
 export function pickPrimaryResourceType(
-  resources: Array<{ type?: string }> | undefined
+  resources: ResourceLike[] | undefined,
+  unitKind?: string
 ): string | undefined {
   if (!resources?.length) return undefined;
-  let best: { type: string; rank: number; index: number } | undefined;
-  for (let i = 0; i < resources.length; i++) {
-    const raw = resources[i]?.type;
-    if (typeof raw !== "string" || !raw.trim()) continue;
-    const type = raw.trim().toLowerCase();
-    const rank = rankType(type);
-    if (!best || rank > best.rank || (rank === best.rank && i < best.index)) {
-      best = { type, rank, index: i };
+  const kind = unitKind?.trim() ? normalizeType(unitKind) : undefined;
+
+  for (const r of resources) {
+    const t = resourceTypeOf(r);
+    if (t && readRole(r) === "primary") return t;
+  }
+
+  if (kind) {
+    for (const r of resources) {
+      const t = resourceTypeOf(r);
+      if (t && readRole(r) !== "support" && typesMatchKind(t, kind)) return t;
     }
   }
-  return best?.type;
+
+  for (const r of resources) {
+    const t = resourceTypeOf(r);
+    if (t && readRole(r) !== "support") return t;
+  }
+
+  for (const r of resources) {
+    const t = resourceTypeOf(r);
+    if (t) return t;
+  }
+  return undefined;
+}
+
+function kindFromConfig(cfg: Record<string, unknown> | null | undefined): string | undefined {
+  if (!cfg || typeof cfg !== "object") return undefined;
+  const meta = cfg.metadata as Record<string, unknown> | undefined;
+  if (meta && typeof meta === "object") {
+    for (const key of ["kind", "resourceType", "unitKind"] as const) {
+      const v = meta[key];
+      if (typeof v === "string" && v.trim()) return normalizeType(v);
+    }
+  }
+  return undefined;
 }
 
 export function resolveResourceType(input: {
   configJson?: Record<string, unknown> | null;
   gitPath?: string | null;
   name?: string;
-  /** API list item type when already resolved by core */
   apiType?: string | null;
 }): string {
   if (input.apiType?.trim() && input.apiType.toLowerCase() !== "unknown") {
@@ -74,6 +91,7 @@ export function resolveResourceType(input: {
   }
 
   const cfg = input.configJson;
+  const stamped = kindFromConfig(cfg);
   const gitPath = input.gitPath?.replace(/\\/g, "/");
   const fromGit = (() => {
     if (!gitPath) return undefined;
@@ -84,16 +102,18 @@ export function resolveResourceType(input: {
     }
     return undefined;
   })();
+  const unitKind = stamped || fromGit;
 
   if (cfg && typeof cfg === "object") {
-    const resources = cfg.resources as Array<{ type?: string }> | undefined;
-    const primary = pickPrimaryResourceType(resources);
-    if (primary) {
-      if (fromGit && rankType(fromGit) >= rankType(primary)) return fromGit;
-      return primary;
+    const resources = cfg.resources as ResourceLike[] | undefined;
+    if (resources?.length) {
+      const primary = pickPrimaryResourceType(resources, unitKind);
+      if (stamped) return stamped;
+      if (primary) return primary;
     }
   }
 
+  if (stamped) return stamped;
   if (fromGit) return fromGit;
   if (input.name?.trim()) return input.name.trim().toLowerCase();
   return "unknown";
