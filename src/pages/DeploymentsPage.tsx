@@ -67,10 +67,38 @@ interface LiveUnitRow {
   name: string;
   subtype: string;
   category: TerraformCategory;
+  /** Workload kind when engine=kubernetes. */
+  k8sKind?: KubernetesWorkloadKind;
+  engine: DeployEngine;
   provider: string;
   status: string;
   region: string;
   environment: string;
+}
+
+function workloadKindForSubtype(subtype: string): KubernetesWorkloadKind {
+  const t = subtype.toLowerCase();
+  if (/helm/.test(t)) return "helm-release";
+  if (/kustomize/.test(t)) return "kustomize";
+  if (/cronjob|k8s-cronjob/.test(t)) return "cronjob";
+  if (/^job$|batch-job|k8s-job/.test(t)) return "job";
+  if (/^(config|configmap|secret)$|k8s-config/.test(t)) return "config";
+  return "workload";
+}
+
+/** In-cluster workloads only — never cluster / node-pool Terraform units. */
+function isKubernetesWorkloadSubtype(subtype: string): boolean {
+  const t = subtype.toLowerCase();
+  if (
+    /node-pool|node-group|karpenter|machine-pool|machine-set/.test(t) ||
+    /^(eks|gke|aks|oke|ack|tke|cce|roks|rosa|openshift)(-|$)/.test(t)
+  ) {
+    return false;
+  }
+  return (
+    /^(workload|helm-release|kustomize|cronjob|job|config)$/.test(t) ||
+    /^k8s-(deployment|service|ingress|cronjob|statefulset|daemonset|storage)/.test(t)
+  );
 }
 
 const statusConfig: Record<
@@ -205,17 +233,20 @@ const DeploymentsPage = () => {
     return m;
   }, [infrastructures]);
 
-  /** Live cloud units for this workspace (Deployments focus). */
+  /** Live cloud / cluster units for this workspace (Deployments focus). */
   const liveUnits = useMemo((): LiveUnitRow[] => {
     return infrastructures
       .filter((i) => i.status === "running" || i.status === "degraded")
       .map((i) => {
         const subtype = subtypeFromInfra(i);
+        const asWorkload = isKubernetesWorkloadSubtype(subtype);
         return {
           id: i.id,
           name: i.name,
           subtype,
-          category: categoryForResourceType(subtype),
+          category: asWorkload ? ("other" as TerraformCategory) : categoryForResourceType(subtype),
+          k8sKind: asWorkload ? workloadKindForSubtype(subtype) : undefined,
+          engine: asWorkload ? ("kubernetes" as const) : ("terraform" as const),
           provider: i.provider || "—",
           status: i.status,
           region: i.region || "—",
@@ -225,10 +256,15 @@ const DeploymentsPage = () => {
   }, [infrastructures, envSlug]);
 
   const liveInCategory = useMemo(() => {
+    if (engine === "kubernetes") {
+      return liveUnits.filter(
+        (u) => u.engine === "kubernetes" && (!k8sKind || u.k8sKind === k8sKind)
+      );
+    }
     return liveUnits.filter((u) => {
+      if (u.engine !== "terraform") return false;
       if (u.category !== tfCategory) return false;
       if (activeTarget && u.subtype !== activeTarget.resourceType) {
-        // Allow close aliases (ec2 ↔ ec2-instance, vm ↔ ec2-instance)
         const a = u.subtype;
         const b = activeTarget.resourceType;
         if (a === b) return true;
@@ -237,7 +273,7 @@ const DeploymentsPage = () => {
       }
       return true;
     });
-  }, [liveUnits, tfCategory, activeTarget]);
+  }, [liveUnits, engine, tfCategory, activeTarget, k8sKind]);
 
   const scopedDeployments = useMemo(() => {
     const projectSlug = selectedProject?.slug;
@@ -356,7 +392,9 @@ const DeploymentsPage = () => {
           {engine === "terraform"
             ? visibleCategories.map((cat) => {
                 const Icon = tfIcons[cat.id];
-                const n = liveUnits.filter((u) => u.category === cat.id).length;
+                const n = liveUnits.filter(
+                  (u) => u.engine === "terraform" && u.category === cat.id
+                ).length;
                 return (
                   <button
                     key={cat.id}
@@ -378,19 +416,27 @@ const DeploymentsPage = () => {
                   </button>
                 );
               })
-            : KUBERNETES_KINDS.map((kind) => (
-                <button
-                  key={kind.id}
-                  onClick={() => setK8sKind(kind.id)}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                    k8sKind === kind.id
-                      ? "bg-secondary text-foreground"
-                      : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
-                  }`}
-                >
-                  {kind.label}
-                </button>
-              ))}
+            : KUBERNETES_KINDS.map((kind) => {
+                const n = liveUnits.filter(
+                  (u) => u.engine === "kubernetes" && u.k8sKind === kind.id
+                ).length;
+                return (
+                  <button
+                    key={kind.id}
+                    onClick={() => setK8sKind(kind.id)}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                      k8sKind === kind.id
+                        ? "bg-secondary text-foreground"
+                        : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+                    }`}
+                  >
+                    {kind.label}
+                    {n > 0 && (
+                      <span className="text-[10px] text-muted-foreground font-mono">{n}</span>
+                    )}
+                  </button>
+                );
+              })}
         </div>
 
         <p className="text-xs text-muted-foreground">
@@ -443,15 +489,12 @@ const DeploymentsPage = () => {
             </span>
           </div>
 
-          {engine === "kubernetes" ? (
-            <div className="p-8 text-center text-sm text-muted-foreground">
-              Workload deployments will appear here when cluster units are applied.
-            </div>
-          ) : liveInCategory.length === 0 ? (
+          {liveInCategory.length === 0 ? (
             <div className="p-8 text-center space-y-2">
               <p className="text-sm text-muted-foreground">
-                No live {TERRAFORM_CATEGORIES.find((c) => c.id === tfCategory)?.label.toLowerCase()}{" "}
-                units in this environment.
+                {engine === "kubernetes"
+                  ? `No live ${KUBERNETES_KINDS.find((k) => k.id === k8sKind)?.label.toLowerCase() || "workload"} units in this environment.`
+                  : `No live ${TERRAFORM_CATEGORIES.find((c) => c.id === tfCategory)?.label.toLowerCase()} units in this environment.`}
               </p>
               <p className="text-xs text-muted-foreground max-w-md mx-auto">
                 Apply a{" "}
@@ -462,7 +505,9 @@ const DeploymentsPage = () => {
                 >
                   Release
                 </button>{" "}
-                to create cloud resources. Pending / stopped units stay on Infrastructure.
+                {engine === "kubernetes"
+                  ? "to sync an Argo Application (engine=kubernetes). Pending units stay on Infrastructure."
+                  : "to create cloud resources. Pending / stopped units stay on Infrastructure."}
               </p>
             </div>
           ) : (

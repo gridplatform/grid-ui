@@ -5,9 +5,16 @@
  * Point VITE_GRID_API_URL at grid-core / CLI bridge.
  */
 
+import { useCallback, useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import type { GridDeployRequest } from "@/lib/deployContract";
 import { clearAuthToken, getAuthToken } from "@/lib/authStorage";
+import {
+  getDriftCheckSnapshot,
+  startDriftCheck,
+  subscribeDriftCheck,
+  type DriftReport,
+} from "@/lib/driftCheckStore";
 import type {
   TopologyProvider,
   TopologyVpc,
@@ -303,25 +310,58 @@ export function useRestoreInfrastructureConfig() {
   });
 }
 
+export type { DriftReport };
+
+async function fetchDriftReport(id: string): Promise<DriftReport> {
+  return gridFetch<DriftReport>(`/infrastructures/${id}/drift-check`, {
+    method: "POST",
+  });
+}
+
 /**
- * Check infrastructure drift
- * POST /api/v1/infrastructures/:id/drift-check
+ * Start a drift check (survives leaving the page).
+ * Pending state is global per infrastructure id.
  */
 export function useDriftCheck() {
   return useMutation({
-    mutationFn: (id: string) =>
-      gridFetch<{
-        infrastructureId: string;
-        kind: string;
-        hasDrift: boolean;
-        gitChangedSinceApply: boolean;
-        summary: string;
-        changes: string[];
-        planExcerpt?: string;
-        actions: { applyGitDesired: string; updateGitToMatchLive: string };
-        checkedAt: string;
-      }>(`/infrastructures/${id}/drift-check`, { method: "POST" }),
+    mutationKey: ["drift-check"],
+    mutationFn: (id: string) => startDriftCheck(id, fetchDriftReport),
   });
+}
+
+/**
+ * Live pending/report for one unit — still true after navigate away + back
+ * while the background POST is in flight.
+ */
+export function useDriftCheckStatus(infrastructureId: string | undefined) {
+  const id = infrastructureId || "";
+  const [snap, setSnap] = useState(() =>
+    id
+      ? getDriftCheckSnapshot(id)
+      : { isPending: false, report: undefined, error: undefined }
+  );
+  const [, bump] = useState(0);
+
+  useEffect(() => {
+    if (!id) {
+      // Still subscribe so list UIs re-render when any check flips.
+      return subscribeDriftCheck(() => bump((n) => n + 1));
+    }
+    setSnap(getDriftCheckSnapshot(id));
+    return subscribeDriftCheck(() => setSnap(getDriftCheckSnapshot(id)));
+  }, [id]);
+
+  const run = useCallback(async () => {
+    if (!id) throw new Error("No infrastructure id");
+    return startDriftCheck(id, fetchDriftReport);
+  }, [id]);
+
+  return {
+    isPending: snap.isPending,
+    report: snap.report,
+    error: snap.error,
+    run,
+  };
 }
 
 export type GitOpsSettings = {

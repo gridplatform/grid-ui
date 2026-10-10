@@ -1,16 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import AppShell from "@/components/AppShell";
 import {
-  ArrowLeft, Save, Sparkles, Loader2, CheckCircle2, XCircle,
+  ArrowLeft, Save, Loader2,
   AlertTriangle, Box,
+  // AI icons — uncomment with AI UI: Sparkles, CheckCircle2, XCircle,
 } from "lucide-react";
 import { type Resource } from "./InfrastructurePage";
 import {
   useApplyInfrastructure,
   useDestroyInfrastructure,
   ApiError,
-  useDriftCheck,
+  useDriftCheckStatus,
   useInfrastructure,
   usePlanInfrastructure,
   useRelease,
@@ -19,8 +20,10 @@ import {
 } from "@/hooks/useGridApi";
 import { useAuth } from "@/contexts/AuthContext";
 import { DeploymentLiveLogs } from "@/components/DeploymentLiveLogs";
+import { DriftResultCard } from "@/components/DriftResultCard";
 import AccessDeniedPage from "@/pages/AccessDeniedPage";
 import { categoryForResourceType, categoryLabel } from "@/lib/resourceCategory";
+import { resolveResourceType } from "@/lib/resourceType";
 import type { TerraformCategory } from "@/lib/deployContract";
 import type { ReleaseMode } from "@/types/api";
 
@@ -34,11 +37,12 @@ const statusColors: Record<string, string> = {
   stale: "bg-warning/15 text-warning border border-warning/30",
 };
 
-interface AiAnalysis {
-  issues: string[];
-  suggestions: string[];
-  suggestedChanges: string;
-}
+// AI types — uncomment with AI UI.
+// interface AiAnalysis {
+//   issues: string[];
+//   suggestions: string[];
+//   suggestedChanges: string;
+// }
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -59,29 +63,17 @@ const InfrastructureDetailPage = () => {
   const applyInfra = useApplyInfrastructure();
   const destroyInfra = useDestroyInfrastructure();
   const restoreConfig = useRestoreInfrastructureConfig();
-  const driftCheck = useDriftCheck();
-  const [driftReport, setDriftReport] = useState<{
-    hasDrift?: boolean;
-    kind?: string;
-    summary?: string;
-    changes?: string[];
-    actions?: { applyGitDesired?: string; updateGitToMatchLive?: string };
-  } | null>(null);
+  const drift = useDriftCheckStatus(resourceId);
+  const driftReport = drift.report ?? null;
+  const driftPending = drift.isPending;
 
   const resource: Resource | null = liveInfra
     ? (() => {
-        const subtype = (() => {
-          const resources = (liveInfra.configJson as { resources?: Array<{ type?: string }> })
-            ?.resources;
-          const fromRes = resources?.[0]?.type;
-          if (fromRes) return fromRes.toLowerCase();
-          const path = liveInfra.gitPath?.replace(/\\/g, "/");
-          if (path) {
-            const parts = path.split("/").filter(Boolean);
-            if (parts.length >= 2) return parts[parts.length - 2].toLowerCase();
-          }
-          return "unknown";
-        })();
+        const subtype = resolveResourceType({
+          configJson: liveInfra.configJson,
+          gitPath: liveInfra.gitPath,
+          name: liveInfra.name,
+        });
         const category = categoryForResourceType(subtype);
         return {
           id: liveInfra.id,
@@ -109,7 +101,8 @@ const InfrastructureDetailPage = () => {
       })()
     : null;
 
-  const [activeTab, setActiveTab] = useState<"details" | "ai">("details");
+  // AI tab — paused until the feature ships. Uncomment with the AI UI blocks below.
+  // const [activeTab, setActiveTab] = useState<"details" | "ai">("details");
   const [editMode, setEditMode] = useState(false);
   const [editedJson, setEditedJson] = useState("");
   const [actionNote, setActionNote] = useState<string | null>(null);
@@ -117,10 +110,11 @@ const InfrastructureDetailPage = () => {
   const [activeReleaseId, setActiveReleaseId] = useState<string | null>(null);
   const { data: activeRelease } = useRelease(activeReleaseId || "");
 
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiResult, setAiResult] = useState<AiAnalysis | null>(null);
-  const [aiEdited, setAiEdited] = useState("");
-  const [aiApprovalStatus, setAiApprovalStatus] = useState<"pending" | "approved" | "rejected" | null>(null);
+  // AI analysis state — paused; uncomment with Diagnose / AI tab UI.
+  // const [aiLoading, setAiLoading] = useState(false);
+  // const [aiResult, setAiResult] = useState<AiAnalysis | null>(null);
+  // const [aiEdited, setAiEdited] = useState("");
+  // const [aiApprovalStatus, setAiApprovalStatus] = useState<"pending" | "approved" | "rejected" | null>(null);
 
   useEffect(() => {
     if (resource && !editMode) {
@@ -141,6 +135,27 @@ const InfrastructureDetailPage = () => {
         "."
     );
   }, [activeRelease]);
+
+  // Must stay above early returns (Rules of Hooks) — survive navigate-away mid-check.
+  // Result UI is DriftResultCard only (do not also set actionNote → duplicate "No drift").
+  const driftWasPending = useRef(false);
+  useEffect(() => {
+    if (!resourceId) return;
+    if (driftPending) {
+      driftWasPending.current = true;
+      // Clear stale release notes; pending state is shown by the drift card/spinner.
+      setActionNote(null);
+      return;
+    }
+    if (!driftWasPending.current) return;
+    driftWasPending.current = false;
+    if (drift.error) {
+      setActionNote(drift.error);
+      return;
+    }
+    // Success / no-drift / failed-with-report → DriftResultCard only
+    setActionNote(null);
+  }, [resourceId, driftPending, drift.error, driftReport]);
 
   if (liveLoading) {
     return (
@@ -243,34 +258,35 @@ const InfrastructureDetailPage = () => {
 
   const runDrift = async () => {
     if (!resourceId || !isLive) return;
+    setActionNote(null);
     try {
-      const report = await driftCheck.mutateAsync(resourceId);
-      setDriftReport(report);
-      setActionNote(report.summary);
+      await drift.run();
+      // Result rendered by DriftResultCard (global store) — no actionNote duplicate.
     } catch (e) {
       setActionNote(e instanceof Error ? e.message : "Drift check failed");
     }
   };
 
-  const runAiAnalysis = () => {
-    setAiLoading(true);
-    setAiResult(null);
-    setAiApprovalStatus(null);
-    // AI analysis endpoint not wired yet — show empty analysis shell.
-    setTimeout(() => {
-      const result: AiAnalysis = {
-        issues: [],
-        suggestions: [],
-        suggestedChanges: JSON.stringify(resource.config, null, 2),
-      };
-      setAiResult(result);
-      setAiEdited(result.suggestedChanges);
-      setAiLoading(false);
-      setAiApprovalStatus("pending");
-    }, 400);
-  };
+  // AI analysis runner — paused until the feature ships.
+  // const runAiAnalysis = () => {
+  //   setAiLoading(true);
+  //   setAiResult(null);
+  //   setAiApprovalStatus(null);
+  //   // AI analysis endpoint not wired yet — show empty analysis shell.
+  //   setTimeout(() => {
+  //     const result: AiAnalysis = {
+  //       issues: [],
+  //       suggestions: [],
+  //       suggestedChanges: JSON.stringify(resource.config, null, 2),
+  //     };
+  //     setAiResult(result);
+  //     setAiEdited(result.suggestedChanges);
+  //     setAiLoading(false);
+  //     setAiApprovalStatus("pending");
+  //   }, 400);
+  // };
 
-  const hasIssue = resource.status === "error" || resource.status === "degraded";
+  // const hasIssue = resource.status === "error" || resource.status === "degraded";
 
   return (
     <AppShell activeTab="infrastructure">
@@ -328,10 +344,13 @@ const InfrastructureDetailPage = () => {
               <>
                 <button
                   onClick={() => void runDrift()}
-                  disabled={driftCheck.isPending}
-                  className="px-3 py-1.5 text-sm border border-border rounded-md hover:bg-secondary transition-colors disabled:opacity-50"
+                  disabled={driftPending}
+                  className="px-3 py-1.5 text-sm border border-border rounded-md hover:bg-secondary transition-colors disabled:opacity-50 inline-flex items-center gap-1.5"
                 >
-                  Check drift
+                  {driftPending && (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  )}
+                  {driftPending ? "Checking drift…" : "Check drift"}
                 </button>
                 <button
                   onClick={() => void startLifecycleRelease("plan")}
@@ -358,6 +377,7 @@ const InfrastructureDetailPage = () => {
                 )}
               </>
             )}
+            {/* AI entry — paused until the feature ships.
             {hasIssue && (
               <button
                 onClick={() => { setActiveTab("ai"); runAiAnalysis(); }}
@@ -367,6 +387,7 @@ const InfrastructureDetailPage = () => {
                 Diagnose with AI
               </button>
             )}
+            */}
           </div>
         </div>
 
@@ -408,43 +429,24 @@ const InfrastructureDetailPage = () => {
           />
         )}
 
-        {driftReport && (
-          <div className="rounded-lg border border-border bg-card p-4 text-xs space-y-2">
-            <p className="text-sm font-medium text-foreground">
-              Drift: {driftReport.kind}
-              {driftReport.hasDrift ? " · changes detected" : " · in sync"}
-            </p>
-            <p className="text-muted-foreground">{driftReport.summary}</p>
-            {driftReport.changes?.slice(0, 12).map((c, i) => (
-              <p key={i} className="font-mono text-muted-foreground">
-                {c}
-              </p>
-            ))}
-            {driftReport.actions && (
-              <div className="pt-2 space-y-1 text-muted-foreground border-t border-border">
-                <p>
-                  <span className="text-foreground">Match Git → live:</span>{" "}
-                  {driftReport.actions.applyGitDesired}
-                </p>
-                <p>
-                  <span className="text-foreground">Keep live → update Git:</span>{" "}
-                  {driftReport.actions.updateGitToMatchLive}
-                </p>
-              </div>
-            )}
+        {driftPending && !driftReport && (
+          <div className="rounded-lg border border-border bg-card px-4 py-3 text-xs text-muted-foreground flex items-center gap-2">
+            <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" />
+            Checking drift…
           </div>
         )}
 
-        {/* Tabs */}
+        {driftReport && !driftPending && <DriftResultCard report={driftReport} />}
+
+        {/* Tabs — AI tab paused until the feature ships. */}
         <div className="flex items-center gap-0 border-b border-border -mb-px">
           <button
-            onClick={() => setActiveTab("details")}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === "details" ? "border-foreground text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
+            type="button"
+            className="px-4 py-2.5 text-sm font-medium border-b-2 transition-colors border-foreground text-foreground"
           >
             Details
           </button>
+          {/* AI tab entry — uncomment with activeTab state + AI panel below.
           <button
             onClick={() => setActiveTab("ai")}
             className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${
@@ -454,10 +456,10 @@ const InfrastructureDetailPage = () => {
             <Sparkles className="w-3.5 h-3.5" />
             AI
           </button>
+          */}
         </div>
 
-        {activeTab === "details" ? (
-          /* ─── Details Tab ───────────────────────────────────────────── */
+        {/* ─── Details Tab ───────────────────────────────────────────── */}
           <div className="space-y-6">
             {/* Info grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -530,8 +532,12 @@ const InfrastructureDetailPage = () => {
               )}
             </div>
           </div>
-        ) : (
-          /* ─── AI Tab ────────────────────────────────────────────────── */
+
+        {/*
+          ─── AI Tab (paused) ──────────────────────────────────────────────
+          Restore with activeTab === "details" ? (details) : (this panel),
+          plus AI state, runAiAnalysis, Diagnose button, and AI tab button above.
+
           <div className="space-y-6">
             {!aiResult && !aiLoading && (
               <div className="rounded-lg border border-border bg-card p-8 text-center">
@@ -559,7 +565,6 @@ const InfrastructureDetailPage = () => {
 
             {aiResult && (
               <>
-                {/* Issues */}
                 <div className="rounded-lg border border-border bg-card p-4">
                   <h3 className="text-sm font-medium text-foreground mb-3 flex items-center gap-2">
                     <AlertTriangle className="w-4 h-4 text-warning" />
@@ -575,7 +580,6 @@ const InfrastructureDetailPage = () => {
                   </ul>
                 </div>
 
-                {/* Suggestions */}
                 <div className="rounded-lg border border-border bg-card p-4">
                   <h3 className="text-sm font-medium text-foreground mb-3 flex items-center gap-2">
                     <Sparkles className="w-4 h-4 text-primary" />
@@ -591,7 +595,6 @@ const InfrastructureDetailPage = () => {
                   </ul>
                 </div>
 
-                {/* Suggested Changes (editable) */}
                 <div className="rounded-lg border border-border bg-card p-4">
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="text-sm font-medium text-foreground">Suggested Configuration Changes</h3>
@@ -640,7 +643,7 @@ const InfrastructureDetailPage = () => {
               </>
             )}
           </div>
-        )}
+        */}
       </div>
     </AppShell>
   );

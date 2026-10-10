@@ -1,7 +1,14 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AlertTriangle, RefreshCw } from "lucide-react";
-import { useDriftCheck, useGitOpsStatus, useSyncGitOps } from "@/hooks/useGridApi";
+import {
+  useDriftCheck,
+  useDriftCheckStatus,
+  useGitOpsStatus,
+  useSyncGitOps,
+} from "@/hooks/useGridApi";
+import { DriftResultCard } from "@/components/DriftResultCard";
+import { isDriftCheckPending } from "@/lib/driftCheckStore";
 
 /**
  * Operator-facing desired-state sync + drift for units tracked from the config repo.
@@ -13,10 +20,12 @@ export function InfrastructureConfigSyncPanel() {
   const sync = useSyncGitOps();
   const driftCheck = useDriftCheck();
   const [note, setNote] = useState<string | null>(null);
-  const [driftById, setDriftById] = useState<Record<string, unknown>>({});
+  // Re-render when any drift check flips pending (list has many ids).
+  useDriftCheckStatus(undefined);
 
   const tracked = status?.infrastructures || [];
   const ahead = tracked.filter((r) => r.desiredAhead);
+  const anyDriftPending = driftCheck.isPending || tracked.some((r) => isDriftCheckPending(r.id));
 
   const handleSync = async () => {
     try {
@@ -32,9 +41,16 @@ export function InfrastructureConfigSyncPanel() {
   };
 
   const handleDrift = async (id: string) => {
+    setNote("Checking drift…");
     try {
       const report = await driftCheck.mutateAsync(id);
-      setDriftById((prev) => ({ ...prev, [id]: report }));
+      setNote(
+        report.kind === "unknown"
+          ? "Drift check failed"
+          : report.hasDrift
+            ? "Drift detected"
+            : "No drift"
+      );
     } catch (e) {
       setNote(e instanceof Error ? e.message : "Drift check failed");
     }
@@ -89,66 +105,75 @@ export function InfrastructureConfigSyncPanel() {
         </div>
       ) : (
         <div className="divide-y divide-border max-h-72 overflow-y-auto">
-          {tracked.map((row) => {
-            const report = driftById[row.id] as
-              | {
-                  hasDrift?: boolean;
-                  kind?: string;
-                  summary?: string;
-                  changes?: string[];
-                }
-              | undefined;
-            return (
-              <div key={row.id} className="px-4 py-3 space-y-2">
-                <div className="flex items-center justify-between gap-3 flex-wrap">
-                  <div className="min-w-0">
-                    <button
-                      type="button"
-                      className="text-sm font-medium text-foreground hover:underline text-left"
-                      onClick={() => navigate(`/infrastructure/${row.id}`)}
-                    >
-                      {row.name}
-                    </button>
-                    <p className="text-[11px] text-muted-foreground font-mono truncate">
-                      {row.gitPath}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {row.desiredAhead && (
-                      <span className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-warning/10 text-warning inline-flex items-center gap-1">
-                        <AlertTriangle className="w-3 h-3" />
-                        Config ahead
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => void handleDrift(row.id)}
-                      disabled={driftCheck.isPending}
-                      className="px-2 py-1 text-xs border border-border rounded-md hover:bg-secondary disabled:opacity-50"
-                    >
-                      Check drift
-                    </button>
-                  </div>
-                </div>
-                {report && (
-                  <div className="rounded-md border border-border bg-background p-2 text-xs space-y-1">
-                    <p className="text-foreground font-medium">
-                      {report.kind}
-                      {report.hasDrift ? " · changes detected" : " · in sync"}
-                    </p>
-                    <p className="text-muted-foreground">{report.summary}</p>
-                    {report.changes?.slice(0, 4).map((c, i) => (
-                      <p key={i} className="font-mono text-muted-foreground">
-                        {c}
-                      </p>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          {tracked.map((row) => (
+            <DriftTrackedRow
+              key={row.id}
+              row={row}
+              onOpen={() => navigate(`/infrastructure/${row.id}`)}
+              onDrift={() => void handleDrift(row.id)}
+              disableDrift={anyDriftPending}
+            />
+          ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function DriftTrackedRow({
+  row,
+  onOpen,
+  onDrift,
+  disableDrift,
+}: {
+  row: {
+    id: string;
+    name: string;
+    gitPath?: string;
+    desiredAhead?: boolean;
+  };
+  onOpen: () => void;
+  onDrift: () => void;
+  disableDrift: boolean;
+}) {
+  const { isPending, report } = useDriftCheckStatus(row.id);
+
+  return (
+    <div className="px-4 py-3 space-y-2">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="min-w-0">
+          <button
+            type="button"
+            className="text-sm font-medium text-foreground hover:underline text-left"
+            onClick={onOpen}
+          >
+            {row.name}
+          </button>
+          <p className="text-[11px] text-muted-foreground font-mono truncate">
+            {row.gitPath}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {row.desiredAhead && (
+            <span className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-warning/10 text-warning inline-flex items-center gap-1">
+              <AlertTriangle className="w-3 h-3" />
+              Config ahead
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={onDrift}
+            disabled={disableDrift}
+            className="px-2 py-1 text-xs border border-border rounded-md hover:bg-secondary disabled:opacity-50"
+          >
+            {isPending ? "Checking…" : "Check drift"}
+          </button>
+        </div>
+      </div>
+      {isPending && !report && (
+        <p className="text-xs text-muted-foreground">Checking drift…</p>
+      )}
+      {report && !isPending && <DriftResultCard report={report} />}
     </div>
   );
 }
