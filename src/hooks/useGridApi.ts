@@ -804,7 +804,7 @@ export interface InfraHealthResponse {
   status: HealthStatus;
   updatedAt: string;
   message: string;
-  source: "inventory";
+  source: "prometheus" | "inventory";
 }
 
 export interface MonitoringDashboardItem {
@@ -815,6 +815,7 @@ export interface MonitoringDashboardItem {
   resourceStatus: string;
   health: HealthStatus;
   updatedAt: string;
+  source?: "prometheus" | "inventory";
 }
 
 /**

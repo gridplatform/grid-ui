@@ -50,7 +50,8 @@ const MonitoringPage = () => {
             Monitoring
           </h1>
           <p className="text-xs text-muted-foreground mt-1">
-            Infrastructure health from the control-plane inventory.
+            Fleet health from the metrics backend when configured; otherwise
+            control-plane inventory status.
           </p>
         </div>
 
@@ -125,7 +126,9 @@ const MonitoringPage = () => {
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-foreground truncate">{resource.name}</p>
                       <p className="text-xs text-muted-foreground">
-                        {resource.provider} · {resource.environment} · {resource.resourceStatus}
+                        {resource.provider} · {resource.environment} ·{" "}
+                        {resource.resourceStatus}
+                        {resource.source ? ` · ${resource.source}` : ""}
                       </p>
                     </div>
                   </div>

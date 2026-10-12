@@ -72,9 +72,9 @@ const MonitoringDetailPage = () => {
             </div>
 
             <div className="rounded-lg border border-border bg-card p-4">
-              <h2 className="text-sm font-medium text-foreground mb-3">Lifecycle metrics</h2>
+              <h2 className="text-sm font-medium text-foreground mb-3">Metrics</h2>
               <p className="text-xs text-muted-foreground mb-3">
-                Lifecycle metrics from inventory and the latest deployment.
+                Metrics backend series when available; otherwise inventory / lifecycle gauges.
               </p>
               {metricsLoading ? (
                 <p className="text-sm text-muted-foreground">Loading metrics…</p>

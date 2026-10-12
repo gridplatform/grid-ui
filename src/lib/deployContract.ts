@@ -176,6 +176,7 @@ export const TERRAFORM_CATEGORIES: {
       { provider: "aws", resourceType: "elasticache", label: "ElastiCache" },
       { provider: "gcp", resourceType: "cloud-sql-postgres", label: "Cloud SQL PostgreSQL" },
       { provider: "gcp", resourceType: "cloud-sql-mysql", label: "Cloud SQL MySQL" },
+      { provider: "gcp", resourceType: "cloud-sql-sqlserver", label: "Cloud SQL SQL Server" },
       { provider: "gcp", resourceType: "memorystore-redis", label: "Memorystore Redis" },
       { provider: "gcp", resourceType: "spanner", label: "Spanner" },
       { provider: "gcp", resourceType: "bigtable", label: "Bigtable" },

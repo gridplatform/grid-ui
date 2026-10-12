@@ -1,39 +1,17 @@
 /**
- * Grid feature flags — edit THIS file (not .env) to turn console features on/off.
+ * Console feature flags (edit this file, not .env). Restart Vite after changes.
  *
- * This is the ONLY flag source. By design:
- * - Console: hides targets with false flags and will not send those deploys.
- * - grid-core API: accepts a correct deploy body regardless of these flags.
- * - grid-cli: generate/apply from grid.json regardless of these flags
- *   (module bank + cloud credentials decide success).
+ * Scope: UI only. grid-core and grid-cli do not read these flags.
  *
- * ─────────────────────────────────────────────────────────────────────────
- * HOW TO TURN A DEPLOY ON IN THE CONSOLE (after you verified it works)
- * ─────────────────────────────────────────────────────────────────────────
+ * How to use:
+ * 1. Pages / tabs — `productFlags` (true = show, false = hide).
+ * 2. Clouds in Deployments — `consoleProviderRelease` (true = offer that provider).
+ * 3. Provider × resource type — `deployFlags` (true = offer that target).
+ *    Example: under `"azure"`, set `"vm": true`.
  *
- * Deploy flags are provider × resource type. Example: Azure VM.
- *
- * Find that provider under `deployFlags` below and flip the line:
- *
- *   "vm": true,  // was false
- *
- * Restart Vite after you save.
- *
- * Product pages (Topology, APM, …) use `productFlags` at the top — set true/false
- * there the same way.
- *
- * Defaults today: all product pages and every provider × resource type on.
- *
- * In-cluster Workloads (Argo / engine=kubernetes) are gated off for the
- * Terraform-first production release — see `kubernetesWorkloads` below.
- * Re-enable when Phase 1+ of grid-core/docs/KUBERNETES.md ships.
- *
- * Provider keys are always quoted strings (e.g. "aws", "deutsche-telekom") so
- * hyphenated ids look the same as the rest. The id must match the Terraform
- * bank folder name (deutsche-telekom/, not deutscheTelekom).
- *
- * Resource types under each provider are listed explicitly (alphabetical).
- * Keys mirror grid-cli resourceCatalog.ts plus deploy aliases.
+ * Provider keys are quoted strings matching the module-bank folder name
+ * (e.g. "aws", "deutsche-telekom"). Resource type keys are alphabetical and
+ * align with grid-cli resourceCatalog / deploy aliases.
  */
 
 export type ProductFlagKey =
@@ -46,29 +24,12 @@ export type ProductFlagKey =
   | 'logging'
   | 'topology'
   | 'admin'
-  /** Argo / in-cluster workloads UI — not Terraform clusters (EKS/GKE/…). */
   | 'kubernetesWorkloads';
-
-export const productFlags: Record<ProductFlagKey, boolean> = {
-  deployments: true,
-  infrastructure: true,
-  releases: true,
-  monitoring: true,
-  alerts: true,
-  // Deferred with K8s workloads / tracing stack — flip true later.
-  apm: false,
-  logging: false,
-  topology: true,
-  admin: true,
-  // TF-first production: hide Workloads tabs / catalog. Flip true later.
-  kubernetesWorkloads: false,
-};
 
 export function isProductEnabled(key: ProductFlagKey): boolean {
   return productFlags[key] === true;
 }
 
-/** Collapse provider spellings the console and CLI both accept onto one id. */
 export function normalizeProviderId(raw?: string): string {
   const p = (raw || 'aws').trim().toLowerCase();
   if (p === 'amazon' || p === 'amazon web services') return 'aws';
@@ -82,6 +43,61 @@ export function normalizeProviderId(raw?: string): string {
   if (p === 'red hat openshift' || p === 'rosa') return 'openshift';
   return p;
 }
+
+export function isConsoleProviderReleased(provider: string | undefined): boolean {
+  return consoleProviderRelease[normalizeProviderId(provider)] === true;
+}
+
+export function isDeployEnabled(provider: string | undefined, resourceType: string): boolean {
+  const id = normalizeProviderId(provider);
+  if (!isConsoleProviderReleased(id)) return false;
+  return deployFlags[id]?.[resourceType.trim().toLowerCase()] === true;
+}
+
+export function isDeployEnabledForAnyProvider(resourceType: string): boolean {
+  const type = resourceType.trim().toLowerCase();
+  return Object.keys(deployFlags).some(
+    (id) => isConsoleProviderReleased(id) && deployFlags[id]?.[type] === true
+  );
+}
+
+export function enabledProviderIds(): string[] {
+  return Object.keys(deployFlags).filter(
+    (id) =>
+      isConsoleProviderReleased(id) &&
+      Object.values(deployFlags[id]).some((on) => on === true)
+  );
+}
+
+export const productFlags: Record<ProductFlagKey, boolean> = {
+  deployments: true,
+  infrastructure: true,
+  releases: true,
+  monitoring: true,
+  alerts: true,
+  apm: false,
+  logging: false,
+  topology: true,
+  admin: true,
+  kubernetesWorkloads: false,
+};
+
+export const consoleProviderRelease: Record<string, boolean> = {
+  aws: true,
+  gcp: true,
+  azure: false,
+  oracle: false,
+  ibm: false,
+  alibaba: false,
+  tencent: false,
+  huawei: false,
+  ovh: false,
+  'deutsche-telekom': false,
+  ctrls: false,
+  yotta: false,
+  rancher: false,
+  openshift: false,
+};
 
 export const deployFlags: Record<string, Record<string, boolean>> = {
   "aws": {
@@ -1305,22 +1321,3 @@ export const deployFlags: Record<string, Record<string, boolean>> = {
     "vllm": true,
   },
 };
-
-/** A provider x resource type pair is deployable only when explicitly on. */
-export function isDeployEnabled(provider: string | undefined, resourceType: string): boolean {
-  const id = normalizeProviderId(provider);
-  return deployFlags[id]?.[resourceType.trim().toLowerCase()] === true;
-}
-
-/** True when at least one provider has this resource type on. */
-export function isDeployEnabledForAnyProvider(resourceType: string): boolean {
-  const type = resourceType.trim().toLowerCase();
-  return Object.values(deployFlags).some((types) => types[type] === true);
-}
-
-/** Providers with at least one resource type on. */
-export function enabledProviderIds(): string[] {
-  return Object.keys(deployFlags).filter((id) =>
-    Object.values(deployFlags[id]).some((on) => on === true)
-  );
-}
