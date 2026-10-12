@@ -24,6 +24,10 @@ import { DriftResultCard } from "@/components/DriftResultCard";
 import AccessDeniedPage from "@/pages/AccessDeniedPage";
 import { categoryForResourceType, categoryLabel } from "@/lib/resourceCategory";
 import { resolveResourceType } from "@/lib/resourceType";
+import {
+  isConsoleOfferingEnabled,
+  validateCatalogVocabulary,
+} from "@/lib/catalogVisibility";
 import type { TerraformCategory } from "@/lib/deployContract";
 import type { ReleaseMode } from "@/types/api";
 
@@ -181,6 +185,81 @@ const InfrastructureDetailPage = () => {
     return (
       <AppShell activeTab="infrastructure">
         <div className="p-6 text-center text-muted-foreground">Resource not found.</div>
+      </AppShell>
+    );
+  }
+
+  const vocabulary = validateCatalogVocabulary(
+    resource.provider,
+    resource.config,
+    liveInfra?.gitPath,
+    resource.name
+  );
+  const offeringEnabled = isConsoleOfferingEnabled(resource.provider, resource.type);
+
+  if (!vocabulary.ok) {
+    return (
+      <AppShell activeTab="infrastructure">
+        <div className="p-6 max-w-2xl mx-auto space-y-4">
+          <button
+            type="button"
+            onClick={() => navigate("/infrastructure")}
+            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back
+          </button>
+          <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 space-y-3">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
+              <div>
+                <h1 className="text-base font-semibold text-foreground">
+                  JSON catalog error — {resource.name}
+                </h1>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Type/subtype words in this unit must match the console catalog
+                  (same strings as primary / secondary <code className="font-mono">type</code> and{" "}
+                  <code className="font-mono">metadata.kind</code>). Fix the desired-state JSON,
+                  then re-sync.
+                </p>
+              </div>
+            </div>
+            <ul className="list-disc pl-5 space-y-1 text-sm text-destructive">
+              {vocabulary.errors.map((err) => (
+                <li key={err}>{err}</li>
+              ))}
+            </ul>
+            {liveInfra?.gitPath ? (
+              <p className="text-xs text-muted-foreground font-mono">{liveInfra.gitPath}</p>
+            ) : null}
+          </div>
+        </div>
+      </AppShell>
+    );
+  }
+
+  if (!offeringEnabled) {
+    return (
+      <AppShell activeTab="infrastructure">
+        <div className="p-6 max-w-xl mx-auto space-y-4">
+          <button
+            type="button"
+            onClick={() => navigate("/infrastructure")}
+            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back
+          </button>
+          <div className="rounded-lg border border-border bg-card p-4 space-y-2">
+            <h1 className="text-base font-semibold text-foreground">Offering disabled in console</h1>
+            <p className="text-sm text-muted-foreground">
+              <span className="font-mono text-foreground">{resource.provider}</span> /{" "}
+              <span className="font-mono text-foreground">{resource.type}</span> is turned off in{" "}
+              <code className="text-xs">featureFlags.ts</code>. Infrastructure detail is hidden.
+              If this unit is still live in the cloud, check Deployments for a residue entry.
+            </p>
+          </div>
+        </div>
       </AppShell>
     );
   }

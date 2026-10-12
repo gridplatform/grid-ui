@@ -1,8 +1,11 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppShell from "@/components/AppShell";
-import { Activity, ChevronRight, Search, Server } from "lucide-react";
-import { useEnvironments, useMonitoringDashboards } from "@/hooks/useGridApi";
+import { Activity, ChevronRight, Search, Server, X } from "lucide-react";
+import { useEnvironments, useInfrastructures, useMonitoringDashboards } from "@/hooks/useGridApi";
+import { infrastructureListVisibility } from "@/lib/catalogVisibility";
+import { isConsoleProviderReleased } from "@/config/featureFlags";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
 import type { HealthStatus } from "@/types/api";
 
 const healthColors: Record<HealthStatus, string> = {
@@ -12,6 +15,13 @@ const healthColors: Record<HealthStatus, string> = {
   unknown: "bg-muted text-muted-foreground",
 };
 
+const healthActiveBorder: Record<HealthStatus, string> = {
+  healthy: "border-success ring-1 ring-success",
+  warning: "border-warning ring-1 ring-warning",
+  critical: "border-destructive ring-1 ring-destructive",
+  unknown: "border-foreground/40 ring-1 ring-foreground/30",
+};
+
 const MonitoringPage = () => {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
@@ -19,9 +29,37 @@ const MonitoringPage = () => {
   const [healthFilter, setHealthFilter] = useState<HealthStatus | "">("");
   const { data: dashboards = [], isLoading, error } = useMonitoringDashboards();
   const { data: environments = [] } = useEnvironments();
+  const { projectSlug, envSlug } = useWorkspace();
+  const { data: infrastructures = [] } = useInfrastructures({
+    project: projectSlug,
+    environment: envSlug || undefined,
+    enabled: true,
+  });
+
+  /** Subtype from infrastructure list when monitoring payload lacks it. */
+  const infraTypeById = useMemo(() => {
+    const m = new Map<string, { provider: string; type: string }>();
+    for (const i of infrastructures) {
+      m.set(i.id, { provider: i.provider, type: (i.type || "").toLowerCase() });
+    }
+    return m;
+  }, [infrastructures]);
+
+  const catalogScoped = useMemo(() => {
+    return dashboards.filter((r) => {
+      const meta = infraTypeById.get(r.id);
+      const provider = meta?.provider || r.provider;
+      const subtype = meta?.type || "";
+      if (!subtype) {
+        // No subtype in workspace cache — still honor provider release gate.
+        return isConsoleProviderReleased(provider);
+      }
+      return infrastructureListVisibility(provider, subtype) !== "hidden";
+    });
+  }, [dashboards, infraTypeById]);
 
   const filtered = useMemo(() => {
-    return dashboards.filter((r) => {
+    return catalogScoped.filter((r) => {
       const matchSearch =
         !searchQuery ||
         r.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -32,23 +70,27 @@ const MonitoringPage = () => {
       const matchHealth = !healthFilter || r.health === healthFilter;
       return matchSearch && matchEnv && matchHealth;
     });
-  }, [dashboards, searchQuery, envFilter, healthFilter]);
+  }, [catalogScoped, searchQuery, envFilter, healthFilter]);
 
   const counts = useMemo(() => {
     return {
-      healthy: dashboards.filter((d) => d.health === "healthy").length,
-      warning: dashboards.filter((d) => d.health === "warning").length,
-      critical: dashboards.filter((d) => d.health === "critical").length,
-      unknown: dashboards.filter((d) => d.health === "unknown").length,
+      healthy: catalogScoped.filter((d) => d.health === "healthy").length,
+      warning: catalogScoped.filter((d) => d.health === "warning").length,
+      critical: catalogScoped.filter((d) => d.health === "critical").length,
+      unknown: catalogScoped.filter((d) => d.health === "unknown").length,
     };
-  }, [dashboards]);
+  }, [catalogScoped]);
 
-  const healthCards: { key: HealthStatus; label: string; count: number; style: string }[] = [
-    { key: "healthy", label: "Healthy", count: counts.healthy, style: healthColors.healthy },
-    { key: "warning", label: "Warning", count: counts.warning, style: healthColors.warning },
-    { key: "critical", label: "Critical", count: counts.critical, style: healthColors.critical },
-    { key: "unknown", label: "Unknown", count: counts.unknown, style: healthColors.unknown },
+  const healthCards: { key: HealthStatus; label: string; count: number }[] = [
+    { key: "healthy", label: "Healthy", count: counts.healthy },
+    { key: "warning", label: "Warning", count: counts.warning },
+    { key: "critical", label: "Critical", count: counts.critical },
+    { key: "unknown", label: "Unknown", count: counts.unknown },
   ];
+
+  const toggleHealth = (key: HealthStatus) => {
+    setHealthFilter((prev) => (prev === key ? "" : key));
+  };
 
   return (
     <AppShell activeTab="monitoring">
@@ -60,30 +102,57 @@ const MonitoringPage = () => {
           </h1>
           <p className="text-xs text-muted-foreground mt-1">
             Fleet health from the metrics backend when configured; otherwise
-            control-plane inventory status. Click a status card to filter.
+            control-plane inventory status.
           </p>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {healthCards.map(({ key, label, count, style }) => {
-            const active = healthFilter === key;
-            return (
+        <div>
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Filter by health
+            </p>
+            {healthFilter ? (
               <button
-                key={key}
                 type="button"
-                onClick={() => setHealthFilter((prev) => (prev === key ? "" : key))}
-                aria-pressed={active}
-                className={`p-3 rounded-lg border bg-card text-left transition-colors focus:outline-none focus:ring-1 focus:ring-ring ${
-                  active
-                    ? "border-ring ring-1 ring-ring"
-                    : "border-border hover:bg-secondary/40"
-                }`}
+                onClick={() => setHealthFilter("")}
+                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
               >
-                <p className={`text-xl font-semibold ${style.split(" ")[1]}`}>{count}</p>
-                <p className="text-xs text-muted-foreground">{label}</p>
+                <X className="w-3 h-3" />
+                Clear filter
               </button>
-            );
-          })}
+            ) : null}
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {healthCards.map(({ key, label, count }) => {
+              const active = healthFilter === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => toggleHealth(key)}
+                  aria-pressed={active}
+                  title={`Show ${label.toLowerCase()} only`}
+                  className={`cursor-pointer p-3 rounded-lg border text-left transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                    active
+                      ? `${healthColors[key]} ${healthActiveBorder[key]}`
+                      : "border-border bg-card hover:bg-secondary/50"
+                  }`}
+                >
+                  <p
+                    className={`text-xl font-semibold ${
+                      active ? "" : healthColors[key].split(" ")[1]
+                    }`}
+                  >
+                    {count}
+                  </p>
+                  <p className={`text-xs ${active ? "opacity-90" : "text-muted-foreground"}`}>
+                    {label}
+                    {active ? " · filtered" : ""}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {error && (
@@ -118,16 +187,27 @@ const MonitoringPage = () => {
         </div>
 
         <div className="rounded-lg border border-border bg-card overflow-hidden">
-          <div className="p-4 border-b border-border flex items-center justify-between">
-            <h2 className="text-sm font-medium text-foreground">Resources</h2>
+          <div className="p-4 border-b border-border flex items-center justify-between gap-2 flex-wrap">
+            <h2 className="text-sm font-medium text-foreground">
+              Resources
+              {healthFilter ? (
+                <span className={`ml-2 text-xs font-medium px-2 py-0.5 rounded-full ${healthColors[healthFilter]}`}>
+                  {healthFilter}
+                </span>
+              ) : null}
+            </h2>
             <span className="text-xs text-muted-foreground">
-              {isLoading ? "loading…" : `${filtered.length} items`}
+              {isLoading
+                ? "loading…"
+                : healthFilter
+                  ? `${filtered.length} of ${catalogScoped.length} items`
+                  : `${filtered.length} items`}
             </span>
           </div>
           {!isLoading && filtered.length === 0 ? (
             <div className="p-8 text-center text-sm text-muted-foreground">
-              {dashboards.length === 0
-                ? "No monitored resources yet."
+              {catalogScoped.length === 0
+                ? "No monitored resources for enabled catalog offerings."
                 : "No resources match this filter."}
             </div>
           ) : (
@@ -135,6 +215,7 @@ const MonitoringPage = () => {
               {filtered.map((resource) => (
                 <button
                   key={resource.id}
+                  type="button"
                   onClick={() => navigate(`/monitoring/${resource.id}`)}
                   className="w-full flex items-center justify-between px-4 py-3 hover:bg-secondary/50 transition-colors text-left"
                 >

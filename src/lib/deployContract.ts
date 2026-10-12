@@ -83,6 +83,8 @@ const PROVIDER_REGION_HINTS: Record<string, string> = {
   yotta: "in-mumbai",
   rancher: "us-east-1",
   openshift: "us-east-1",
+  "redis-enterprise": "us-east-1",
+  "confluent-cloud": "us-east-1",
 };
 
 export function regionHintFor(provider: string): string {

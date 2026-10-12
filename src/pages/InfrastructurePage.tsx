@@ -37,6 +37,7 @@ import {
   categoryLabel,
 } from "@/lib/resourceCategory";
 import { isProductEnabled } from "@/config/featureFlags";
+import { infrastructureListVisibility } from "@/lib/catalogVisibility";
 
 export type ResourceStatus = "running" | "stopped" | "error" | "degraded" | "stale" | "pending";
 
@@ -62,6 +63,8 @@ export interface Resource {
   cluster?: string;
   /** terraform = cloud modules; kubernetes = cluster workloads (future). */
   engine: DeployEngine;
+  /** Catalog vocabulary invalid — detail shows errors instead of normal JSON. */
+  catalogInvalid?: boolean;
 }
 
 function formatSubtypeLabel(subtype: string): string {
@@ -230,7 +233,14 @@ const InfrastructurePage = () => {
   const destroyInfra = useDestroyInfrastructure();
 
   const resources = useMemo(() => {
-    return (liveItems || []).map(mapListItem);
+    return (liveItems || [])
+      .map(mapListItem)
+      .map((r) => {
+        const vis = infrastructureListVisibility(r.provider, r.type);
+        if (vis === "hidden") return null;
+        return { ...r, catalogInvalid: vis === "invalid" };
+      })
+      .filter((r): r is Resource => r != null);
   }, [liveItems]);
 
   // Reset subtype when type or engine changes.
@@ -636,6 +646,11 @@ const InfrastructurePage = () => {
                   <div className="flex items-center gap-2 min-w-0">
                     <Icon className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                     <span className="text-sm text-foreground font-medium truncate">{resource.name}</span>
+                    {resource.catalogInvalid ? (
+                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-destructive/10 text-destructive flex-shrink-0">
+                        JSON error
+                      </span>
+                    ) : null}
                   </div>
                   <span
                     className={`text-xs font-medium px-2 py-0.5 rounded-full w-fit ${provider.className}`}

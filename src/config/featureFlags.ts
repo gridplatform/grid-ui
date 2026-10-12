@@ -97,6 +97,9 @@ export const consoleProviderRelease: Record<string, boolean> = {
   yotta: false,
   rancher: false,
   openshift: false,
+  // Specialty / SaaS module roots (present in grid-terraform). Keep false until validated.
+  'redis-enterprise': false,
+  'confluent-cloud': false,
 };
 
 export const deployFlags: Record<string, Record<string, boolean>> = {
@@ -322,6 +325,7 @@ export const deployFlags: Record<string, Record<string, boolean>> = {
     "transcribe": true,
     "transfer-family": true,
     "transfer-server": true,
+    "transit-gateway": true,
     "translate": true,
     "triton-inference-server": true,
     "trusted-advisor": true,
@@ -415,6 +419,7 @@ export const deployFlags: Record<string, Record<string, boolean>> = {
     "gke": true,
     "gke-autopilot": true,
     "gke-hub": true,
+    "gke-node-pool": true,
     "gpu-instance": true,
     "gpu-node-pool": true,
     "group": true,
@@ -612,6 +617,7 @@ export const deployFlags: Record<string, Record<string, boolean>> = {
     "private-dns-resolver": true,
     "private-endpoint": true,
     "public-ip": true,
+    "purview": true,
     "qdrant": true,
     "ray-cluster": true,
     "recovery-services": true,
@@ -705,6 +711,7 @@ export const deployFlags: Record<string, Record<string, boolean>> = {
     "heatwave": true,
     "iam": true,
     "identity": true,
+    "instance-pool": true,
     "integration": true,
     "internet-gateway": true,
     "kms": true,
@@ -795,6 +802,7 @@ export const deployFlags: Record<string, Record<string, boolean>> = {
     "is-vpc": true,
     "key-protect": true,
     "kserve": true,
+    "load-balancer": true,
     "logging": true,
     "match-360": true,
     "monitoring": true,
@@ -1317,7 +1325,18 @@ export const deployFlags: Record<string, Record<string, boolean>> = {
     "rosa-machine-pool": true,
     "rosa-sts-policy": true,
     "route": true,
+    "self-managed-cluster": true,
     "storage-class": true,
     "vllm": true,
+  },
+
+  "redis-enterprise": {
+    "aws": true,
+    "azure": true,
+    "gcp": true,
+  },
+
+  "confluent-cloud": {
+    "confluent-cloud": true,
   },
 };

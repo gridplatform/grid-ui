@@ -39,6 +39,7 @@ import {
   isProductEnabled,
 } from "@/config/features";
 import { categoryForResourceType } from "@/lib/resourceCategory";
+import { isConsoleOfferingEnabled, isLiveResidue } from "@/lib/catalogVisibility";
 import { useDeployments, useInfrastructures } from "@/hooks/useGridApi";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import type { Deployment as ApiDeployment, InfrastructureListItem } from "@/types/api";
@@ -75,6 +76,8 @@ interface LiveUnitRow {
   status: string;
   region: string;
   environment: string;
+  /** Console offering off but unit still live in cloud. */
+  residue?: boolean;
 }
 
 function workloadKindForSubtype(subtype: string): KubernetesWorkloadKind {
@@ -244,7 +247,12 @@ const DeploymentsPage = () => {
   /** Live cloud / cluster units for this workspace (Deployments focus). */
   const liveUnits = useMemo((): LiveUnitRow[] => {
     return infrastructures
-      .filter((i) => i.status === "running" || i.status === "degraded")
+      .filter(
+        (i) =>
+          i.status === "running" ||
+          i.status === "degraded" ||
+          i.status === "error"
+      )
       .map((i) => {
         const subtype = subtypeFromInfra(i);
         const asWorkload = isKubernetesWorkloadSubtype(subtype);
@@ -259,17 +267,36 @@ const DeploymentsPage = () => {
           status: i.status,
           region: i.region || "—",
           environment: i.environment || envSlug || "—",
+          residue: isLiveResidue(i.provider, subtype, i.status),
         };
       });
   }, [infrastructures, envSlug]);
 
+  /** Offering still enabled in the console. */
+  const enabledLiveUnits = useMemo(
+    () =>
+      liveUnits.filter(
+        (u) =>
+          !u.residue &&
+          isConsoleOfferingEnabled(u.provider, u.subtype) &&
+          (u.status === "running" || u.status === "degraded")
+      ),
+    [liveUnits]
+  );
+
+  /** Live in cloud but console catalog flag is off — residue only. */
+  const residueUnits = useMemo(
+    () => liveUnits.filter((u) => u.residue),
+    [liveUnits]
+  );
+
   const liveInCategory = useMemo(() => {
     if (engine === "kubernetes") {
-      return liveUnits.filter(
+      return enabledLiveUnits.filter(
         (u) => u.engine === "kubernetes" && (!k8sKind || u.k8sKind === k8sKind)
       );
     }
-    return liveUnits.filter((u) => {
+    return enabledLiveUnits.filter((u) => {
       if (u.engine !== "terraform") return false;
       if (u.category !== tfCategory) return false;
       if (activeTarget && u.subtype !== activeTarget.resourceType) {
@@ -281,7 +308,7 @@ const DeploymentsPage = () => {
       }
       return true;
     });
-  }, [liveUnits, engine, tfCategory, activeTarget, k8sKind]);
+  }, [enabledLiveUnits, engine, tfCategory, activeTarget, k8sKind]);
 
   const scopedDeployments = useMemo(() => {
     const projectSlug = selectedProject?.slug;
@@ -557,6 +584,50 @@ const DeploymentsPage = () => {
             </div>
           )}
         </div>
+
+        {residueUnits.length > 0 ? (
+          <div className="rounded-lg border border-warning/40 bg-warning/5 overflow-hidden">
+            <div className="p-4 border-b border-warning/30 flex items-center justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-medium text-foreground">Residue (offering disabled)</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Still deployed in the cloud, but this catalog offering is off in the console.
+                  Infrastructure JSON/detail is hidden — flip the feature flag to manage again.
+                </p>
+              </div>
+              <span className="text-xs text-muted-foreground">{residueUnits.length}</span>
+            </div>
+            <div className="divide-y divide-border">
+              {residueUnits.map((unit) => (
+                <div
+                  key={unit.id}
+                  className="w-full flex flex-col sm:flex-row sm:items-center px-4 py-3 gap-2 text-left"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm text-foreground font-medium">{unit.name}</span>
+                      <span className="text-xs text-muted-foreground font-mono">{unit.subtype}</span>
+                      <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-warning/15 text-warning">
+                        residue
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {unit.provider} · {unit.region} · {unit.environment} · deployed and{" "}
+                      {unit.status} — console offering disabled
+                    </p>
+                  </div>
+                  <span
+                    className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                      liveStatusColor[unit.status] || "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {unit.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         {/* Recent plan/apply runs for this category */}
         <div className="rounded-lg border border-border bg-card overflow-hidden">
