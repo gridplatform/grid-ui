@@ -16,6 +16,7 @@ const MonitoringPage = () => {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
   const [envFilter, setEnvFilter] = useState("");
+  const [healthFilter, setHealthFilter] = useState<HealthStatus | "">("");
   const { data: dashboards = [], isLoading, error } = useMonitoringDashboards();
   const { data: environments = [] } = useEnvironments();
 
@@ -28,9 +29,10 @@ const MonitoringPage = () => {
         r.health.toLowerCase().includes(searchQuery.toLowerCase()) ||
         r.resourceStatus.toLowerCase().includes(searchQuery.toLowerCase());
       const matchEnv = !envFilter || r.environment === envFilter;
-      return matchSearch && matchEnv;
+      const matchHealth = !healthFilter || r.health === healthFilter;
+      return matchSearch && matchEnv && matchHealth;
     });
-  }, [dashboards, searchQuery, envFilter]);
+  }, [dashboards, searchQuery, envFilter, healthFilter]);
 
   const counts = useMemo(() => {
     return {
@@ -40,6 +42,13 @@ const MonitoringPage = () => {
       unknown: dashboards.filter((d) => d.health === "unknown").length,
     };
   }, [dashboards]);
+
+  const healthCards: { key: HealthStatus; label: string; count: number; style: string }[] = [
+    { key: "healthy", label: "Healthy", count: counts.healthy, style: healthColors.healthy },
+    { key: "warning", label: "Warning", count: counts.warning, style: healthColors.warning },
+    { key: "critical", label: "Critical", count: counts.critical, style: healthColors.critical },
+    { key: "unknown", label: "Unknown", count: counts.unknown, style: healthColors.unknown },
+  ];
 
   return (
     <AppShell activeTab="monitoring">
@@ -51,24 +60,30 @@ const MonitoringPage = () => {
           </h1>
           <p className="text-xs text-muted-foreground mt-1">
             Fleet health from the metrics backend when configured; otherwise
-            control-plane inventory status.
+            control-plane inventory status. Click a status card to filter.
           </p>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {(
-            [
-              ["Healthy", counts.healthy, healthColors.healthy],
-              ["Warning", counts.warning, healthColors.warning],
-              ["Critical", counts.critical, healthColors.critical],
-              ["Unknown", counts.unknown, healthColors.unknown],
-            ] as const
-          ).map(([label, count, style]) => (
-            <div key={label} className="p-3 rounded-lg border border-border bg-card">
-              <p className={`text-xl font-semibold ${style.split(" ")[1]}`}>{count}</p>
-              <p className="text-xs text-muted-foreground">{label}</p>
-            </div>
-          ))}
+          {healthCards.map(({ key, label, count, style }) => {
+            const active = healthFilter === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setHealthFilter((prev) => (prev === key ? "" : key))}
+                aria-pressed={active}
+                className={`p-3 rounded-lg border bg-card text-left transition-colors focus:outline-none focus:ring-1 focus:ring-ring ${
+                  active
+                    ? "border-ring ring-1 ring-ring"
+                    : "border-border hover:bg-secondary/40"
+                }`}
+              >
+                <p className={`text-xl font-semibold ${style.split(" ")[1]}`}>{count}</p>
+                <p className="text-xs text-muted-foreground">{label}</p>
+              </button>
+            );
+          })}
         </div>
 
         {error && (
@@ -111,7 +126,9 @@ const MonitoringPage = () => {
           </div>
           {!isLoading && filtered.length === 0 ? (
             <div className="p-8 text-center text-sm text-muted-foreground">
-              No monitored resources yet.
+              {dashboards.length === 0
+                ? "No monitored resources yet."
+                : "No resources match this filter."}
             </div>
           ) : (
             <div className="divide-y divide-border">
