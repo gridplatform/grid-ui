@@ -23,7 +23,10 @@
  * there the same way.
  *
  * Defaults today: all product pages and every provider × resource type on.
- * Kubernetes workload kinds (CronJob, Helm, …) are not gated here yet.
+ *
+ * In-cluster Workloads (Argo / engine=kubernetes) are gated off for the
+ * Terraform-first production release — see `kubernetesWorkloads` below.
+ * Re-enable when Phase 1+ of grid-core/docs/KUBERNETES.md ships.
  *
  * Provider keys are always quoted strings (e.g. "aws", "deutsche-telekom") so
  * hyphenated ids look the same as the rest. The id must match the Terraform
@@ -42,7 +45,9 @@ export type ProductFlagKey =
   | 'apm'
   | 'logging'
   | 'topology'
-  | 'admin';
+  | 'admin'
+  /** Argo / in-cluster workloads UI — not Terraform clusters (EKS/GKE/…). */
+  | 'kubernetesWorkloads';
 
 export const productFlags: Record<ProductFlagKey, boolean> = {
   deployments: true,
@@ -50,10 +55,13 @@ export const productFlags: Record<ProductFlagKey, boolean> = {
   releases: true,
   monitoring: true,
   alerts: true,
-  apm: true,
-  logging: true,
+  // Deferred with K8s workloads / tracing stack — flip true later.
+  apm: false,
+  logging: false,
   topology: true,
   admin: true,
+  // TF-first production: hide Workloads tabs / catalog. Flip true later.
+  kubernetesWorkloads: false,
 };
 
 export function isProductEnabled(key: ProductFlagKey): boolean {

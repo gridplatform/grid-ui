@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import AppShell from "@/components/AppShell";
 import {
   Server,
@@ -36,6 +36,7 @@ import {
 import {
   enabledTargetsForCategory,
   enabledTerraformCategories,
+  isProductEnabled,
 } from "@/config/features";
 import { categoryForResourceType } from "@/lib/resourceCategory";
 import { useDeployments, useInfrastructures } from "@/hooks/useGridApi";
@@ -206,6 +207,13 @@ const DeploymentsPage = () => {
   const defaultCategory = visibleCategories[0]?.id ?? "compute";
 
   const [engine, setEngine] = useState<DeployEngine>("terraform");
+
+  // TF-first release: never stay on Workloads when the gate is off.
+  useEffect(() => {
+    if (!isProductEnabled("kubernetesWorkloads") && engine === "kubernetes") {
+      setEngine("terraform");
+    }
+  }, [engine]);
   const [tfCategory, setTfCategory] = useState<TerraformCategory>(defaultCategory);
   const [k8sKind, setK8sKind] = useState<KubernetesWorkloadKind>("workload");
   /** Only set when the user clicks a catalog card — never auto-select. */
@@ -363,6 +371,7 @@ const DeploymentsPage = () => {
           </div>
         )}
 
+        {/* Workloads (Argo) gated off for TF-first production. */}
         <div className="flex items-center gap-1 p-1 bg-card border border-border rounded-lg w-fit">
           <button
             onClick={() => setEngine("terraform")}
@@ -375,17 +384,20 @@ const DeploymentsPage = () => {
             <Server className="w-4 h-4" />
             Infrastructure
           </button>
-          <button
-            onClick={() => setEngine("kubernetes")}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-              engine === "kubernetes"
-                ? "bg-secondary text-foreground"
-                : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
-            }`}
-          >
-            <Ship className="w-4 h-4" />
-            Workloads
-          </button>
+          {/* TODO(k8s-workloads): entry point — flip productFlags.kubernetesWorkloads */}
+          {isProductEnabled("kubernetesWorkloads") ? (
+            <button
+              onClick={() => setEngine("kubernetes")}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                engine === "kubernetes"
+                  ? "bg-secondary text-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+              }`}
+            >
+              <Ship className="w-4 h-4" />
+              Workloads
+            </button>
+          ) : null}
         </div>
 
         <div className="flex items-center gap-1 p-1 bg-card border border-border rounded-lg w-fit flex-wrap">

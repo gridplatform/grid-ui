@@ -36,6 +36,7 @@ import {
   categoryForResourceType,
   categoryLabel,
 } from "@/lib/resourceCategory";
+import { isProductEnabled } from "@/config/featureFlags";
 
 export type ResourceStatus = "running" | "stopped" | "error" | "degraded" | "stale" | "pending";
 
@@ -208,6 +209,15 @@ const InfrastructurePage = () => {
   const [providerFilter, setProviderFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<ResourceStatus | "">("");
   const [actionNote, setActionNote] = useState<string | null>(null);
+
+  // TF-first release: never stay on Workloads when the gate is off.
+  useEffect(() => {
+    if (!isProductEnabled("kubernetesWorkloads") && engine === "kubernetes") {
+      setEngine("terraform");
+      setTypeFilter("");
+      setSubtypeFilter("");
+    }
+  }, [engine]);
 
   const workspaceReady = !!projectSlug && !!envSlug;
   const { data: liveItems, isLoading, error, refetch } = useInfrastructures({
@@ -469,7 +479,7 @@ const InfrastructurePage = () => {
           </div>
         )}
 
-        {/* Engine: cloud infra vs cluster workloads (same Type / Subtype model). */}
+        {/* Engine toggle. Workloads (Argo) gated off for TF-first production. */}
         <div className="flex items-center gap-1 p-1 bg-card border border-border rounded-lg w-fit flex-wrap">
           <button
             type="button"
@@ -487,22 +497,25 @@ const InfrastructurePage = () => {
             <Server className="w-4 h-4" />
             Infrastructure
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              setEngine("kubernetes");
-              setTypeFilter("");
-              setSubtypeFilter("");
-            }}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-              engine === "kubernetes"
-                ? "bg-secondary text-foreground"
-                : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
-            }`}
-          >
-            <Ship className="w-4 h-4" />
-            Workloads
-          </button>
+          {/* TODO(k8s-workloads): entry point — flip productFlags.kubernetesWorkloads */}
+          {isProductEnabled("kubernetesWorkloads") ? (
+            <button
+              type="button"
+              onClick={() => {
+                setEngine("kubernetes");
+                setTypeFilter("");
+                setSubtypeFilter("");
+              }}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                engine === "kubernetes"
+                  ? "bg-secondary text-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+              }`}
+            >
+              <Ship className="w-4 h-4" />
+              Workloads
+            </button>
+          ) : null}
         </div>
         <p className="text-xs text-muted-foreground -mt-3">
           {engine === "terraform"
