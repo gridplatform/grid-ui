@@ -40,7 +40,8 @@ export type ReleaseStatus =
   | "rolled_back";
 export type ReleaseMode = "plan" | "apply" | "destroy" | "custom";
 export type AlertSeverity = "critical" | "warning" | "info";
-export type AlertStatus = "firing" | "acknowledged" | "resolved";
+/** firing | suppressed (silence/inhibit) | resolved */
+export type AlertStatus = "firing" | "suppressed" | "resolved";
 
 export interface HealthCounts {
   healthy: number;
@@ -339,26 +340,42 @@ export interface Alert {
   status: AlertStatus;
   message: string;
   startedAt: string;
-  acknowledgedBy?: string;
   resolvedAt?: string;
 }
 
 /**
- * Alert rule definition
- * POST /api/v1/monitoring/alerts → AlertRule
+ * Alert rule — Prometheus rule written by Grid Settings
+ * GET/POST /api/v1/monitoring/alert-rules
  */
 export interface AlertRule {
   id: string;
   name: string;
   description: string;
+  /** PromQL */
   condition: string;
-  resourceScope: string;
+  forDuration: string;
   severity: AlertSeverity;
-  channels: ("slack" | "pagerduty" | "email" | "webhook" | "opsgenie")[];
+  channelIds: string[];
   enabled: boolean;
-  sourceFile?: string;
-  lastSynced?: string;
-  hasLocalChanges?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type AlertChannelType = "webhook" | "slack" | "email";
+
+/**
+ * Notify channel — Alertmanager receiver
+ * GET/POST /api/v1/monitoring/alert-channels
+ */
+export interface AlertChannel {
+  id: string;
+  name: string;
+  type: AlertChannelType;
+  url?: string;
+  to?: string;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // ─── APM Types ──────────────────────────────────────────────────────────────

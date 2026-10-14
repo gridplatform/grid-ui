@@ -26,6 +26,8 @@ import type {
   Approval,
   Cluster,
   Alert,
+  AlertChannel,
+  AlertRule,
   APMService,
   APMOperation,
   APMTrace,
@@ -827,6 +829,82 @@ export function useAlerts() {
     queryKey: ["alerts"],
     queryFn: () => gridFetch<Alert[]>("/monitoring/alerts"),
     refetchInterval: 30_000,
+  });
+}
+
+/** GET /api/v1/monitoring/alert-rules */
+export function useAlertRules() {
+  return useQuery({
+    queryKey: ["alert-rules"],
+    queryFn: () => gridFetch<AlertRule[]>("/monitoring/alert-rules"),
+  });
+}
+
+/** POST /api/v1/monitoring/alert-rules */
+export function useUpsertAlertRule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Partial<AlertRule> & { name: string; condition: string }) =>
+      gridFetch<AlertRule>("/monitoring/alert-rules", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["alert-rules"] });
+      qc.invalidateQueries({ queryKey: ["alerts"] });
+    },
+  });
+}
+
+/** DELETE /api/v1/monitoring/alert-rules/:id */
+export function useDeleteAlertRule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      gridFetch<void>(`/monitoring/alert-rules/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["alert-rules"] });
+      qc.invalidateQueries({ queryKey: ["alerts"] });
+    },
+  });
+}
+
+/** GET /api/v1/monitoring/alert-channels */
+export function useAlertChannels() {
+  return useQuery({
+    queryKey: ["alert-channels"],
+    queryFn: () => gridFetch<AlertChannel[]>("/monitoring/alert-channels"),
+  });
+}
+
+/** POST /api/v1/monitoring/alert-channels */
+export function useUpsertAlertChannel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (
+      body: Partial<AlertChannel> & { name: string; type: AlertChannel["type"] }
+    ) =>
+      gridFetch<AlertChannel>("/monitoring/alert-channels", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["alert-channels"] });
+      qc.invalidateQueries({ queryKey: ["alert-rules"] });
+    },
+  });
+}
+
+/** DELETE /api/v1/monitoring/alert-channels/:id */
+export function useDeleteAlertChannel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      gridFetch<void>(`/monitoring/alert-channels/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["alert-channels"] });
+      qc.invalidateQueries({ queryKey: ["alert-rules"] });
+    },
   });
 }
 
