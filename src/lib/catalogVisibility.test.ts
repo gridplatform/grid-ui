@@ -7,13 +7,20 @@ import {
 
 describe("catalogVisibility", () => {
   it("hides flagged-off providers on infrastructure", () => {
-    expect(infrastructureListVisibility("oracle", "vm")).toBe("hidden");
+    expect(infrastructureListVisibility("oracle", "compute-instance")).toBe("hidden");
     expect(infrastructureListVisibility("azure", "virtual-machine")).toBe("hidden");
   });
 
   it("shows enabled aws/gcp catalog subtypes", () => {
     expect(infrastructureListVisibility("aws", "vpc")).toBe("visible");
+    expect(infrastructureListVisibility("aws", "ec2-instance")).toBe("visible");
     expect(infrastructureListVisibility("gcp", "cloud-sql-sqlserver")).toBe("visible");
+  });
+
+  it("normalizes display provider labels to catalog ids", () => {
+    expect(infrastructureListVisibility("Deutsche Telekom", "cce")).toBe("hidden");
+    expect(infrastructureListVisibility("Confluent Cloud", "confluent-cloud")).toBe("hidden");
+    expect(infrastructureListVisibility("AWS", "ec2-instance")).toBe("visible");
   });
 
   it("marks unknown subtype as invalid", () => {
@@ -21,9 +28,9 @@ describe("catalogVisibility", () => {
   });
 
   it("detects live residue when offering is off", () => {
-    expect(isLiveResidue("oracle", "vm", "running")).toBe(true);
+    expect(isLiveResidue("oracle", "compute-instance", "running")).toBe(true);
     expect(isLiveResidue("aws", "vpc", "running")).toBe(false);
-    expect(isLiveResidue("oracle", "vm", "pending")).toBe(false);
+    expect(isLiveResidue("oracle", "compute-instance", "pending")).toBe(false);
   });
 
   it("rejects JSON when kind and primary disagree", () => {

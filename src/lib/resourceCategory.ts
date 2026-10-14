@@ -33,7 +33,7 @@ export function categoryForResourceType(resourceType?: string | null): Terraform
   // Node pools / groups are first-class Infrastructure units (one YAML each).
   if (
     /node-pool|node-group|karpenter|machine-pool|machine-set/.test(t) ||
-    /^(eks|gke|aks|oke|ack|tke|cce|roks|rosa)(-|$)/.test(t) ||
+    /^(eks|gke|aks|oke|ack|tke|cce|roks|rosa|kubernetes-engine)(-|$)/.test(t) ||
     /^(rosa-cluster|roks-cluster|openshift)/.test(t)
   ) {
     return "kubernetes-cluster";
@@ -54,7 +54,7 @@ export function categoryForResourceType(resourceType?: string | null): Terraform
     return "network";
   }
   if (
-    /ec2|instance|vm$|virtual-machine|compute-engine|autoscaling|asg|lightsail|bare-metal|gpu-instance|single-vm|vm-scale|spot|batch(?!-)/.test(
+    /ec2|instance|vm$|virtual-machine|compute-engine|compute-instance|autoscaling|asg|lightsail|bare-metal|gpu-instance|single-vm|vm-scale|spot|batch(?!-)/.test(
       t
     )
   ) {

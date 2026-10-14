@@ -68,6 +68,11 @@ export interface Resource {
 }
 
 function formatSubtypeLabel(subtype: string): string {
+  const t = subtype.trim().toLowerCase();
+  if (t === "ec2-instance") return "EC2 instance";
+  if (t === "compute-engine-instance") return "Compute Engine instance";
+  if (t === "kubernetes-engine") return "GKE";
+  if (t === "s3-bucket") return "S3 bucket";
   return subtype.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
@@ -87,7 +92,7 @@ function isKubernetesWorkloadSubtype(subtype: string): boolean {
   const t = subtype.toLowerCase();
   if (
     /node-pool|node-group|karpenter|machine-pool|machine-set/.test(t) ||
-    /^(eks|gke|aks|oke|ack|tke|cce|roks|rosa|openshift)(-|$)/.test(t)
+    /^(eks|gke|aks|oke|ack|tke|cce|roks|rosa|openshift|kubernetes-engine)(-|$)/.test(t)
   ) {
     return false;
   }

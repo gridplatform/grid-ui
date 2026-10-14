@@ -95,7 +95,7 @@ function isKubernetesWorkloadSubtype(subtype: string): boolean {
   const t = subtype.toLowerCase();
   if (
     /node-pool|node-group|karpenter|machine-pool|machine-set/.test(t) ||
-    /^(eks|gke|aks|oke|ack|tke|cce|roks|rosa|openshift)(-|$)/.test(t)
+    /^(eks|gke|aks|oke|ack|tke|cce|roks|rosa|openshift|kubernetes-engine)(-|$)/.test(t)
   ) {
     return false;
   }
@@ -157,8 +157,9 @@ function subtypeFromInfra(item: InfrastructureListItem): string {
     if (folder && folder !== "projects") return folder;
   }
   const name = (item.name || "").toLowerCase();
-  if (/vpc/.test(name)) return "vpc";
-  if (/ec2|vm/.test(name)) return "ec2-instance";
+  if (/vpc|network/.test(name)) return "vpc";
+  if (/ec2/.test(name)) return "ec2-instance";
+  if (/gke|kubernetes-engine/.test(name)) return "kubernetes-engine";
   return name || "unknown";
 }
 

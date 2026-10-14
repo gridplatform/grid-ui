@@ -7,11 +7,9 @@
  * 1. Pages / tabs — `productFlags` (true = show, false = hide).
  * 2. Clouds in Deployments — `consoleProviderRelease` (true = offer that provider).
  * 3. Provider × resource type — `deployFlags` (true = offer that target).
- *    Example: under `"azure"`, set `"vm": true`.
+ *    Example: under `"aws"`, set `"ec2-instance": true`.
  *
- * Provider keys are quoted strings matching the module-bank folder name
- * (e.g. "aws", "deutsche-telekom"). Resource type keys are alphabetical and
- * align with grid-cli resourceCatalog / deploy aliases.
+ * Provider / type keys match module-bank folder names (same as resourceCatalog).
  */
 
 export type ProductFlagKey =
@@ -31,16 +29,16 @@ export function isProductEnabled(key: ProductFlagKey): boolean {
 }
 
 export function normalizeProviderId(raw?: string): string {
-  const p = (raw || 'aws').trim().toLowerCase();
-  if (p === 'amazon' || p === 'amazon web services') return 'aws';
-  if (p === 'google' || p === 'google cloud' || p === 'gcloud') return 'gcp';
-  if (p === 'microsoft' || p === 'microsoft azure') return 'azure';
-  if (p === 'oci' || p === 'oracle cloud') return 'oracle';
-  if (p === 'ibm cloud') return 'ibm';
+  const p = (raw || 'aws').trim().toLowerCase().replace(/[_\s]+/g, '-');
+  if (p === 'amazon' || p === 'amazon-web-services') return 'aws';
+  if (p === 'google' || p === 'google-cloud' || p === 'gcloud') return 'gcp';
+  if (p === 'microsoft' || p === 'microsoft-azure') return 'azure';
+  if (p === 'oci' || p === 'oracle-cloud') return 'oracle';
+  if (p === 'ibm-cloud') return 'ibm';
   if (p === 'aliyun') return 'alibaba';
-  if (p === 'dt' || p === 'open telekom cloud' || p === 'otc') return 'deutsche-telekom';
-  if (p === 'ctrl-s' || p === 'ctrls cloud') return 'ctrls';
-  if (p === 'red hat openshift' || p === 'rosa') return 'openshift';
+  if (p === 'dt' || p === 'open-telekom-cloud' || p === 'otc') return 'deutsche-telekom';
+  if (p === 'ctrl-s' || p === 'ctrls-cloud') return 'ctrls';
+  if (p === 'red-hat-openshift' || p === 'rosa') return 'openshift';
   return p;
 }
 
@@ -97,7 +95,6 @@ export const consoleProviderRelease: Record<string, boolean> = {
   yotta: false,
   rancher: false,
   openshift: false,
-  // Specialty / SaaS module roots (present in grid-terraform). Keep false until validated.
   'redis-enterprise': false,
   'confluent-cloud': false,
 };
@@ -111,7 +108,7 @@ export const deployFlags: Record<string, Record<string, boolean>> = {
     "ami": true,
     "amplify": true,
     "api-gateway": true,
-    "apigateway": true,
+    "apigateway-v2": true,
     "appconfig": true,
     "appflow": true,
     "application-migration": true,
@@ -168,7 +165,6 @@ export const deployFlags: Record<string, Record<string, boolean>> = {
     "dms": true,
     "dns": true,
     "documentdb": true,
-    "dynamodb": true,
     "dynamodb-accelerator": true,
     "dynamodb-table": true,
     "ebs-volume": true,
@@ -295,7 +291,6 @@ export const deployFlags: Record<string, Record<string, boolean>> = {
     "route53-dnssec": true,
     "route53-health-check": true,
     "route53-resolver": true,
-    "s3": true,
     "s3-access-point": true,
     "s3-bucket": true,
     "sagemaker": true,
@@ -332,7 +327,6 @@ export const deployFlags: Record<string, Record<string, boolean>> = {
     "verified-access": true,
     "verified-permissions": true,
     "vllm": true,
-    "vm": true,
     "vpc": true,
     "vpc-endpoint": true,
     "vpc-lattice": true,
@@ -414,9 +408,7 @@ export const deployFlags: Record<string, Record<string, boolean>> = {
     "firestore": true,
     "firewall": true,
     "firewall-policy": true,
-    "gcs": true,
     "gemini-api": true,
-    "gke": true,
     "gke-autopilot": true,
     "gke-hub": true,
     "gke-node-pool": true,
@@ -444,14 +436,13 @@ export const deployFlags: Record<string, Record<string, boolean>> = {
     "logging": true,
     "looker": true,
     "media-cdn": true,
-    "memorystore": true,
     "memorystore-memcached": true,
     "memorystore-redis": true,
     "mig": true,
     "milvus": true,
     "mlflow": true,
     "monitoring": true,
-    "monitoring-alert": true,
+    "monitoring-alert-policy": true,
     "natural-language": true,
     "network": true,
     "network-connectivity": true,
@@ -493,8 +484,6 @@ export const deployFlags: Record<string, Record<string, boolean>> = {
     "video-ai": true,
     "vision-ai": true,
     "vllm": true,
-    "vm": true,
-    "vpc": true,
     "vpc-access-connector": true,
     "vpc-service-controls": true,
     "vpn": true,
@@ -507,6 +496,7 @@ export const deployFlags: Record<string, Record<string, boolean>> = {
     "ai-foundry": true,
     "ai-search": true,
     "aks": true,
+    "aks-node-pool": true,
     "api-management": true,
     "app-configuration": true,
     "app-service": true,
@@ -515,8 +505,6 @@ export const deployFlags: Record<string, Record<string, boolean>> = {
     "automation": true,
     "availability-set": true,
     "azure-ad-application": true,
-    "azure-ml": true,
-    "azure-openai": true,
     "batch": true,
     "bentoml": true,
     "bot-service": true,
@@ -593,7 +581,6 @@ export const deployFlags: Record<string, Record<string, boolean>> = {
     "monitor": true,
     "monitoring": true,
     "mssql-managed-instance": true,
-    "mysql": true,
     "mysql-flexible": true,
     "nat-gateway": true,
     "netapp": true,
@@ -601,7 +588,6 @@ export const deployFlags: Record<string, Record<string, boolean>> = {
     "network-security-group": true,
     "nginx": true,
     "notification-hub": true,
-    "nsg": true,
     "nvidia-gpu-operator": true,
     "nvidia-nim": true,
     "ollama": true,
@@ -621,7 +607,6 @@ export const deployFlags: Record<string, Record<string, boolean>> = {
     "qdrant": true,
     "ray-cluster": true,
     "recovery-services": true,
-    "redis": true,
     "redis-cache": true,
     "redis-enterprise": true,
     "relay": true,
@@ -639,7 +624,6 @@ export const deployFlags: Record<string, Record<string, boolean>> = {
     "spring-apps": true,
     "sql-server": true,
     "static-web-app": true,
-    "storage": true,
     "storage-account": true,
     "stream-analytics": true,
     "subnet": true,
@@ -652,11 +636,9 @@ export const deployFlags: Record<string, Record<string, boolean>> = {
     "virtual-machine": true,
     "vision": true,
     "vllm": true,
-    "vm": true,
     "vm-scale-set": true,
     "vmware": true,
     "vnet-peering": true,
-    "vpc": true,
     "vpn-gateway": true,
     "waf": true,
     "weaviate": true,
@@ -681,6 +663,7 @@ export const deployFlags: Record<string, Record<string, boolean>> = {
     "cloud-migration": true,
     "cluster-network": true,
     "compute-cluster": true,
+    "compute-instance": true,
     "container-engine": true,
     "container-instances": true,
     "data-catalog": true,
@@ -754,10 +737,10 @@ export const deployFlags: Record<string, Record<string, boolean>> = {
     "speech": true,
     "stack-monitoring": true,
     "streaming": true,
+    "subnet": true,
     "vault": true,
     "vision": true,
     "vllm": true,
-    "vm": true,
     "vulnerability-scanning": true,
     "waf": true,
     "web-application-firewall": true,
@@ -778,6 +761,7 @@ export const deployFlags: Record<string, Record<string, boolean>> = {
     "cloudant": true,
     "code-engine": true,
     "cognos-dashboard": true,
+    "compute-instance": true,
     "container-registry": true,
     "continuous-delivery": true,
     "data-refinery": true,
@@ -825,7 +809,6 @@ export const deployFlags: Record<string, Record<string, boolean>> = {
     "toolchain": true,
     "transit-gateway": true,
     "vllm": true,
-    "vm": true,
     "vpn": true,
     "watson-assistant": true,
     "watson-discovery": true,
@@ -849,6 +832,7 @@ export const deployFlags: Record<string, Record<string, boolean>> = {
     "cloud-firewall": true,
     "cloud-phone": true,
     "cms": true,
+    "compute-instance": true,
     "config": true,
     "container-registry": true,
     "dataworks": true,
@@ -908,8 +892,8 @@ export const deployFlags: Record<string, Record<string, boolean>> = {
     "slb": true,
     "smart-hosting": true,
     "ssl-certificate": true,
+    "subnet": true,
     "vllm": true,
-    "vm": true,
     "vod": true,
     "vpc": true,
     "vpn": true,
@@ -932,6 +916,7 @@ export const deployFlags: Record<string, Record<string, boolean>> = {
     "ckafka": true,
     "clb": true,
     "cls": true,
+    "compute-instance": true,
     "cos-bucket": true,
     "cynosdb": true,
     "dayu": true,
@@ -974,7 +959,6 @@ export const deployFlags: Record<string, Record<string, boolean>> = {
     "tse": true,
     "tsf": true,
     "vllm": true,
-    "vm": true,
     "vod": true,
     "vpc-endpoint": true,
     "vpn": true,
@@ -1004,6 +988,7 @@ export const deployFlags: Record<string, Record<string, boolean>> = {
     "cloudtable": true,
     "codearts": true,
     "codearts-pipeline": true,
+    "compute-instance": true,
     "config": true,
     "cph": true,
     "css": true,
@@ -1083,7 +1068,6 @@ export const deployFlags: Record<string, Record<string, boolean>> = {
     "swr": true,
     "tms": true,
     "vllm": true,
-    "vm": true,
     "vod": true,
     "vpc-endpoint": true,
     "vpn": true,
@@ -1099,6 +1083,7 @@ export const deployFlags: Record<string, Record<string, boolean>> = {
     "cloud-project": true,
     "cloud-project-kube-iprestrictions": true,
     "cold-archive": true,
+    "compute-instance": true,
     "database": true,
     "database-kafka": true,
     "database-mongodb": true,
@@ -1132,7 +1117,6 @@ export const deployFlags: Record<string, Record<string, boolean>> = {
     "subnet": true,
     "user": true,
     "vllm": true,
-    "vm": true,
     "vps": true,
     "vrack": true,
     "workflow": true,
@@ -1147,6 +1131,7 @@ export const deployFlags: Record<string, Record<string, boolean>> = {
     "cce-node-pool": true,
     "ces": true,
     "cfw": true,
+    "compute-instance": true,
     "css": true,
     "cts": true,
     "dc": true,
@@ -1182,7 +1167,6 @@ export const deployFlags: Record<string, Record<string, boolean>> = {
     "subnet": true,
     "swr": true,
     "vllm": true,
-    "vm": true,
     "vpcep": true,
     "vpn": true,
     "waf": true,
@@ -1191,6 +1175,7 @@ export const deployFlags: Record<string, Record<string, boolean>> = {
 
   "ctrls": {
     "backup": true,
+    "compute-instance": true,
     "database": true,
     "dns": true,
     "flavor": true,
@@ -1215,7 +1200,6 @@ export const deployFlags: Record<string, Record<string, boolean>> = {
     "share": true,
     "subnet": true,
     "vllm": true,
-    "vm": true,
     "volume": true,
     "volume-attach": true,
     "vsphere-network": true,
@@ -1227,6 +1211,7 @@ export const deployFlags: Record<string, Record<string, boolean>> = {
     "acl": true,
     "affinity-group": true,
     "autoscale": true,
+    "compute-instance": true,
     "database": true,
     "disk": true,
     "dns": true,
@@ -1247,9 +1232,9 @@ export const deployFlags: Record<string, Record<string, boolean>> = {
     "security-group": true,
     "snapshot": true,
     "ssh-keypair": true,
+    "subnet": true,
     "template": true,
     "vllm": true,
-    "vm": true,
     "volume": true,
     "vpc": true,
     "vpn": true,
