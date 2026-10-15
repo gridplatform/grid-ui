@@ -32,6 +32,10 @@ export function InfrastructureConfigSyncPanel() {
   const tracked = useMemo(() => {
     const rows = status?.infrastructures || [];
     return rows.filter((r) => {
+      // Permanent: removed-from-config / destroyed are not “ahead of apply”.
+      // They belong on the Infrastructure “Removed from config” card.
+      const st = (r.status || "").toLowerCase();
+      if (st === "stale" || st === "destroyed") return false;
       if (projectSlug && r.project && r.project !== projectSlug) return false;
       if (envSlug && r.environment && r.environment !== envSlug) return false;
       const subtype =
