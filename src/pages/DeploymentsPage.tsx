@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ElementType } from "react";
 import AppShell from "@/components/AppShell";
 import {
   Server,
@@ -40,6 +40,10 @@ import {
 } from "@/config/features";
 import { categoryForResourceType } from "@/lib/resourceCategory";
 import { isConsoleOfferingEnabled, isLiveResidue } from "@/lib/catalogVisibility";
+import {
+  isKubernetesWorkloadSubtype,
+  workloadKindForSubtype,
+} from "@/lib/workloadKind";
 import { useDeployments, useInfrastructures } from "@/hooks/useGridApi";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import type { Deployment as ApiDeployment, InfrastructureListItem } from "@/types/api";
@@ -80,34 +84,9 @@ interface LiveUnitRow {
   residue?: boolean;
 }
 
-function workloadKindForSubtype(subtype: string): KubernetesWorkloadKind {
-  const t = subtype.toLowerCase();
-  if (/helm/.test(t)) return "helm-release";
-  if (/kustomize/.test(t)) return "kustomize";
-  if (/cronjob|k8s-cronjob/.test(t)) return "cronjob";
-  if (/^job$|batch-job|k8s-job/.test(t)) return "job";
-  if (/^(config|configmap|secret)$|k8s-config/.test(t)) return "config";
-  return "workload";
-}
-
-/** In-cluster workloads only — never cluster / node-pool Terraform units. */
-function isKubernetesWorkloadSubtype(subtype: string): boolean {
-  const t = subtype.toLowerCase();
-  if (
-    /node-pool|node-group|karpenter|machine-pool|machine-set/.test(t) ||
-    /^(eks|gke|aks|oke|ack|tke|cce|roks|rosa|openshift|kubernetes-engine)(-|$)/.test(t)
-  ) {
-    return false;
-  }
-  return (
-    /^(workload|helm-release|kustomize|cronjob|job|config)$/.test(t) ||
-    /^k8s-(deployment|service|ingress|cronjob|statefulset|daemonset|storage)/.test(t)
-  );
-}
-
 const statusConfig: Record<
   DeploymentStatus,
-  { label: string; color: string; icon: React.ElementType }
+  { label: string; color: string; icon: ElementType }
 > = {
   queued: { label: "Queued", color: "bg-muted text-muted-foreground", icon: Clock },
   pending: { label: "Pending", color: "bg-muted text-muted-foreground", icon: Clock },
@@ -126,7 +105,7 @@ const liveStatusColor: Record<string, string> = {
   stale: "bg-warning/10 text-warning",
 };
 
-const tfIcons: Record<TerraformCategory, React.ElementType> = {
+const tfIcons: Record<TerraformCategory, ElementType> = {
   compute: Monitor,
   network: Network,
   "kubernetes-cluster": Cloud,

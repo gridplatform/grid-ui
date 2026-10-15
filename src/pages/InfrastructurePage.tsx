@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, type ElementType } from "react";
 import { useNavigate } from "react-router-dom";
 import AppShell from "@/components/AppShell";
 import {
@@ -41,6 +41,10 @@ import {
   infrastructureListVisibility,
   isInfrastructureListed,
 } from "@/lib/catalogVisibility";
+import {
+  isKubernetesWorkloadSubtype,
+  workloadKindForSubtype,
+} from "@/lib/workloadKind";
 
 export type ResourceStatus = "running" | "stopped" | "error" | "degraded" | "stale" | "pending";
 
@@ -79,32 +83,6 @@ function formatSubtypeLabel(subtype: string): string {
   return subtype.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-/** Workload kinds use the same Type/Subtype model once cluster units land. */
-function workloadKindForSubtype(subtype: string): KubernetesWorkloadKind {
-  const t = subtype.toLowerCase();
-  if (/helm/.test(t)) return "helm-release";
-  if (/kustomize/.test(t)) return "kustomize";
-  if (/cronjob|k8s-cronjob/.test(t)) return "cronjob";
-  if (/^job$|batch-job|k8s-job/.test(t)) return "job";
-  if (/^(config|configmap|secret)$|k8s-config/.test(t)) return "config";
-  return "workload";
-}
-
-/** True only for in-cluster workloads — never for cluster or node-pool infra. */
-function isKubernetesWorkloadSubtype(subtype: string): boolean {
-  const t = subtype.toLowerCase();
-  if (
-    /node-pool|node-group|karpenter|machine-pool|machine-set/.test(t) ||
-    /^(eks|gke|aks|oke|ack|tke|cce|roks|rosa|openshift|kubernetes-engine)(-|$)/.test(t)
-  ) {
-    return false;
-  }
-  return (
-    /^(workload|helm-release|kustomize|cronjob|job|config)$/.test(t) ||
-    /^k8s-(deployment|service|ingress|cronjob|statefulset|daemonset|storage)/.test(t)
-  );
-}
-
 function mapListItem(item: InfrastructureListItem): Resource {
   const subtype = (item.type || "unknown").toLowerCase();
   const status: ResourceStatus =
@@ -141,7 +119,7 @@ function mapListItem(item: InfrastructureListItem): Resource {
   };
 }
 
-function categoryIcon(category: string): React.ElementType {
+function categoryIcon(category: string): ElementType {
   switch (category) {
     case "compute":
       return Monitor;

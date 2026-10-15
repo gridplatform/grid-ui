@@ -22,7 +22,7 @@ import {
   useSystemVersion,
   useUpdateEnvironmentApproval,
 } from "@/hooks/useGridApi";
-import { isInfrastructureListed } from "@/lib/catalogVisibility";
+import { isActiveCatalogUnit } from "@/lib/catalogVisibility";
 import { canManageUsers, isAdminLike } from "@/lib/rbac";
 
 type AdminTab =
@@ -77,10 +77,8 @@ const AdminPage = () => {
       if (env.kind === "ephemeral") return env;
       const unitCount = allInfra.filter(
         (i) =>
-          i.status !== "stale" &&
-          i.status !== "destroyed" &&
-          (i.environment || "").toLowerCase() === (env.slug || "").toLowerCase() &&
-          isInfrastructureListed(i.provider, (i.type || "").toLowerCase())
+          isActiveCatalogUnit(i) &&
+          (i.environment || "").toLowerCase() === (env.slug || "").toLowerCase()
       ).length;
       return { ...env, unitCount };
     });

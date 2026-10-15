@@ -17,7 +17,7 @@ import {
   useProjects,
 } from "@/hooks/useGridApi";
 import { isConsoleProviderReleased } from "@/config/featureFlags";
-import { isInfrastructureListed } from "@/lib/catalogVisibility";
+import { isActiveCatalogUnit } from "@/lib/catalogVisibility";
 import type { Environment, Project } from "@/types/api";
 
 const LS_PROJECT = "grid.workspace.projectId";
@@ -47,16 +47,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const { data: allInfra = [] } = useInfrastructures();
   const { data: gitops } = useGitOpsStatus();
 
-  // Catalog-visible units still in desired-state (not removed / destroyed).
-  // Stale = JSON gone from config → “Removed from config”, not env unit counts.
   const listedInfra = useMemo(
-    () =>
-      allInfra.filter(
-        (i) =>
-          i.status !== "destroyed" &&
-          i.status !== "stale" &&
-          isInfrastructureListed(i.provider, (i.type || "").toLowerCase())
-      ),
+    () => allInfra.filter(isActiveCatalogUnit),
     [allInfra]
   );
 
@@ -70,7 +62,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             .filter((c) => c && isConsoleProviderReleased(c))
         ),
       ].sort((a, b) => a.localeCompare(b));
-      // Fall back to discovery clouds filtered by release when store is empty.
       const displayClouds =
         clouds.length > 0
           ? clouds

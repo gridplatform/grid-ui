@@ -1,12 +1,6 @@
 /**
  * Console catalog visibility (UI only).
- *
- * Catalog identity = provider × subtype (resource type), same strings as
- * desired-state JSON primary / secondaries and deployFlags keys.
- *
- * - Flag off → hide from Infrastructure (and Monitoring inventory).
- * - Live + flag off → residue on Deployments (no full infra detail).
- * - Unknown / mismatched catalog words in JSON → vocabulary error on detail.
+ * Keys are provider × subtype, matching desired-state JSON and deployFlags.
  */
 
 import {
@@ -55,15 +49,15 @@ export function isConsoleOfferingEnabled(
 }
 
 /**
- * Infrastructure / Monitoring list: show enabled offerings; show invalid
- * vocabulary on released providers so operators can fix JSON; hide
- * flagged-off offerings and anything under an unreleased cloud.
+ * List-row visibility for Infrastructure and Monitoring.
+ * - visible: released provider and enabled subtype
+ * - invalid: released provider but unknown subtype (detail can show vocabulary errors)
+ * - hidden: unreleased provider or disabled subtype
  */
 export function infrastructureListVisibility(
   provider: string | undefined,
   subtype: string
 ): CatalogListVisibility {
-  // Unreleased cloud → never list (even unknown subtypes / bad JSON).
   if (!isConsoleProviderReleased(provider)) {
     return "hidden";
   }
@@ -77,12 +71,23 @@ export function infrastructureListVisibility(
   return "visible";
 }
 
-/** True when a unit should appear in Infrastructure / sync / env counts. */
+/** Whether a unit is included in Infrastructure, sync, and env unit counts. */
 export function isInfrastructureListed(
   provider: string | undefined,
   subtype: string
 ): boolean {
   return infrastructureListVisibility(provider, subtype) !== "hidden";
+}
+
+/** Active desired-state unit eligible for project / environment unit counts. */
+export function isActiveCatalogUnit(unit: {
+  status: string;
+  provider?: string;
+  type?: string;
+}): boolean {
+  const status = unit.status.toLowerCase();
+  if (status === "stale" || status === "destroyed") return false;
+  return isInfrastructureListed(unit.provider, (unit.type || "").toLowerCase());
 }
 
 /** Live unit that remains after the console offering was turned off. */
