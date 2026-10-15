@@ -77,6 +77,8 @@ const AdminPage = () => {
       if (env.kind === "ephemeral") return env;
       const unitCount = allInfra.filter(
         (i) =>
+          i.status !== "stale" &&
+          i.status !== "destroyed" &&
           (i.environment || "").toLowerCase() === (env.slug || "").toLowerCase() &&
           isInfrastructureListed(i.provider, (i.type || "").toLowerCase())
       ).length;

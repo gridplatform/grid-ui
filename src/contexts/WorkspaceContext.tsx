@@ -47,12 +47,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const { data: allInfra = [] } = useInfrastructures();
   const { data: gitops } = useGitOpsStatus();
 
-  // Catalog-visible units only (deployFlags / consoleProviderRelease).
+  // Catalog-visible units still in desired-state (not removed / destroyed).
+  // Stale = JSON gone from config → “Removed from config”, not env unit counts.
   const listedInfra = useMemo(
     () =>
       allInfra.filter(
         (i) =>
           i.status !== "destroyed" &&
+          i.status !== "stale" &&
           isInfrastructureListed(i.provider, (i.type || "").toLowerCase())
       ),
     [allInfra]
