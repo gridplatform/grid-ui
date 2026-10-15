@@ -291,16 +291,18 @@ export const TERRAFORM_CATEGORIES: {
   {
     id: "containers",
     label: "Containers",
-    description: "ECS, Cloud Run, Batch, and other non-Kubernetes runtimes.",
+    description: "ECS, App Runner, Elastic Beanstalk, Cloud Run, Batch, and other non-Kubernetes runtimes.",
     targets: [
       { provider: "aws", resourceType: "ecs", label: "ECS" },
       { provider: "aws", resourceType: "fargate", label: "Fargate" },
       { provider: "aws", resourceType: "batch", label: "Batch" },
       { provider: "aws", resourceType: "apprunner", label: "App Runner" },
+      { provider: "aws", resourceType: "elastic-beanstalk", label: "Elastic Beanstalk" },
       { provider: "gcp", resourceType: "cloud-run", label: "Cloud Run" },
       { provider: "gcp", resourceType: "cloud-run-job", label: "Cloud Run job" },
       { provider: "azure", resourceType: "container-apps", label: "Container Apps" },
       { provider: "azure", resourceType: "container-instance", label: "Container Instances" },
+      { provider: "azure", resourceType: "app-service", label: "App Service" },
     ],
   },
   {

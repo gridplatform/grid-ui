@@ -110,7 +110,7 @@ export function categoryForResourceType(resourceType?: string | null): Terraform
     return "serverless";
   }
   if (
-    /ecs|fargate|ecr|apprunner|cloud-run|container-app|container-instance|container-registry|batch|code-engine|tem/.test(
+    /ecs|fargate|ecr|apprunner|elastic-beanstalk|beanstalk|cloud-run|container-app|container-instance|container-registry|batch|code-engine|tem|app-service/.test(
       t
     )
   ) {
@@ -157,5 +157,6 @@ export function categoriesPresentIn(
 
 /** Human label for a Terraform category (Type column). */
 export function categoryLabel(category: TerraformCategory): string {
+  if (category === "other") return "Uncategorized";
   return TERRAFORM_CATEGORIES.find((c) => c.id === category)?.label ?? category;
 }

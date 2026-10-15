@@ -82,7 +82,7 @@ export const productFlags: Record<ProductFlagKey, boolean> = {
 
 export const consoleProviderRelease: Record<string, boolean> = {
   aws: true,
-  gcp: true,
+  gcp: false,
   azure: false,
   oracle: false,
   ibm: false,
