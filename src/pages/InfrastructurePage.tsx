@@ -37,7 +37,10 @@ import {
   categoryLabel,
 } from "@/lib/resourceCategory";
 import { isProductEnabled } from "@/config/featureFlags";
-import { infrastructureListVisibility } from "@/lib/catalogVisibility";
+import {
+  infrastructureListVisibility,
+  isInfrastructureListed,
+} from "@/lib/catalogVisibility";
 
 export type ResourceStatus = "running" | "stopped" | "error" | "degraded" | "stale" | "pending";
 
@@ -241,8 +244,8 @@ const InfrastructurePage = () => {
     return (liveItems || [])
       .map(mapListItem)
       .map((r) => {
+        if (!isInfrastructureListed(r.provider, r.type)) return null;
         const vis = infrastructureListVisibility(r.provider, r.type);
-        if (vis === "hidden") return null;
         return { ...r, catalogInvalid: vis === "invalid" };
       })
       .filter((r): r is Resource => r != null);

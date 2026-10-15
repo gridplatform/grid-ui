@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   infrastructureListVisibility,
+  isInfrastructureListed,
   isLiveResidue,
   validateCatalogVocabulary,
 } from "./catalogVisibility";
@@ -9,12 +10,20 @@ describe("catalogVisibility", () => {
   it("hides flagged-off providers on infrastructure", () => {
     expect(infrastructureListVisibility("oracle", "compute-instance")).toBe("hidden");
     expect(infrastructureListVisibility("azure", "virtual-machine")).toBe("hidden");
+    expect(infrastructureListVisibility("gcp", "cloud-sql-sqlserver")).toBe("hidden");
+    expect(infrastructureListVisibility("Alibaba", "ack")).toBe("hidden");
   });
 
-  it("shows enabled aws/gcp catalog subtypes", () => {
+  it("hides unreleased providers even for unknown subtypes", () => {
+    expect(infrastructureListVisibility("alibaba", "not-a-real-type")).toBe("hidden");
+    expect(infrastructureListVisibility("GCP", "totally-made-up")).toBe("hidden");
+    expect(isInfrastructureListed("alibaba", "ack")).toBe(false);
+  });
+
+  it("shows enabled aws catalog subtypes", () => {
     expect(infrastructureListVisibility("aws", "vpc")).toBe("visible");
     expect(infrastructureListVisibility("aws", "ec2-instance")).toBe("visible");
-    expect(infrastructureListVisibility("gcp", "cloud-sql-sqlserver")).toBe("visible");
+    expect(isInfrastructureListed("AWS", "vpc")).toBe(true);
   });
 
   it("normalizes display provider labels to catalog ids", () => {
@@ -23,8 +32,9 @@ describe("catalogVisibility", () => {
     expect(infrastructureListVisibility("AWS", "ec2-instance")).toBe("visible");
   });
 
-  it("marks unknown subtype as invalid", () => {
+  it("marks unknown subtype as invalid only on released providers", () => {
     expect(infrastructureListVisibility("aws", "not-a-real-type-xyz")).toBe("invalid");
+    expect(isInfrastructureListed("aws", "not-a-real-type-xyz")).toBe(true);
   });
 
   it("detects live residue when offering is off", () => {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import {
@@ -9,13 +9,19 @@ import {
 } from "@/hooks/useGridApi";
 import { DriftResultCard } from "@/components/DriftResultCard";
 import { isDriftCheckPending } from "@/lib/driftCheckStore";
+import { isInfrastructureListed } from "@/lib/catalogVisibility";
+import { resolveResourceType } from "@/lib/resourceType";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
 
 /**
  * Operator-facing desired-state sync + drift for units tracked from the config repo.
  * Repo URL / auto-sync interval live under Admin → Sources.
+ *
+ * Disabled / unreleased catalog offerings are omitted (same gate as Infrastructure list).
  */
 export function InfrastructureConfigSyncPanel() {
   const navigate = useNavigate();
+  const { projectSlug, envSlug } = useWorkspace();
   const { data: status, refetch } = useGitOpsStatus();
   const sync = useSyncGitOps();
   const driftCheck = useDriftCheck();
@@ -23,7 +29,26 @@ export function InfrastructureConfigSyncPanel() {
   // Re-render when any drift check flips pending (list has many ids).
   useDriftCheckStatus(undefined);
 
-  const tracked = status?.infrastructures || [];
+  const tracked = useMemo(() => {
+    const rows = status?.infrastructures || [];
+    return rows.filter((r) => {
+      if (projectSlug && r.project && r.project !== projectSlug) return false;
+      if (envSlug && r.environment && r.environment !== envSlug) return false;
+      const subtype =
+        (r.type && r.type.trim()) ||
+        resolveResourceType({ gitPath: r.gitPath, name: r.name });
+      const provider =
+        r.provider ||
+        (() => {
+          // Fallback: projects/<app>/<cloud>/...
+          const parts = (r.gitPath || "").replace(/\\/g, "/").split("/").filter(Boolean);
+          const i = parts.indexOf("projects");
+          return i >= 0 && parts[i + 2] ? parts[i + 2] : undefined;
+        })();
+      return isInfrastructureListed(provider, subtype);
+    });
+  }, [status?.infrastructures, projectSlug, envSlug]);
+
   const ahead = tracked.filter((r) => r.desiredAhead);
   const anyDriftPending = driftCheck.isPending || tracked.some((r) => isDriftCheckPending(r.id));
 

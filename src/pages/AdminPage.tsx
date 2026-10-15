@@ -1,4 +1,4 @@
-import { useEffect, useState, type ElementType } from "react";
+import { useEffect, useMemo, useState, type ElementType } from "react";
 import { useSearchParams } from "react-router-dom";
 import AppShell from "@/components/AppShell";
 import { AdminSourcesPanel } from "@/components/AdminSourcesPanel";
@@ -18,9 +18,11 @@ import {
   useAuditLog,
   useCurrentUser,
   useEnvironments,
+  useInfrastructures,
   useSystemVersion,
   useUpdateEnvironmentApproval,
 } from "@/hooks/useGridApi";
+import { isInfrastructureListed } from "@/lib/catalogVisibility";
 import { canManageUsers, isAdminLike } from "@/lib/rbac";
 
 type AdminTab =
@@ -68,7 +70,19 @@ const AdminPage = () => {
   );
   const { data: me, isLoading: meLoading } = useCurrentUser();
   const managesUsers = canManageUsers(me?.role);
-  const { data: environments = [], isLoading: envsLoading } = useEnvironments();
+  const { data: rawEnvironments = [], isLoading: envsLoading } = useEnvironments();
+  const { data: allInfra = [] } = useInfrastructures();
+  const environments = useMemo(() => {
+    return rawEnvironments.map((env) => {
+      if (env.kind === "ephemeral") return env;
+      const unitCount = allInfra.filter(
+        (i) =>
+          (i.environment || "").toLowerCase() === (env.slug || "").toLowerCase() &&
+          isInfrastructureListed(i.provider, (i.type || "").toLowerCase())
+      ).length;
+      return { ...env, unitCount };
+    });
+  }, [rawEnvironments, allInfra]);
   const { data: auditLog = [], isLoading: auditLoading } = useAuditLog(300, {
     enabled: managesUsers,
   });

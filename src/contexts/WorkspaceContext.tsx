@@ -13,8 +13,11 @@ import {
   invalidateWorkspaceQueries,
   useEnvironments,
   useGitOpsStatus,
+  useInfrastructures,
   useProjects,
 } from "@/hooks/useGridApi";
+import { isConsoleProviderReleased } from "@/config/featureFlags";
+import { isInfrastructureListed } from "@/lib/catalogVisibility";
 import type { Environment, Project } from "@/types/api";
 
 const LS_PROJECT = "grid.workspace.projectId";
@@ -40,8 +43,44 @@ const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
-  const { data: projects = [], isLoading: projectsLoading } = useProjects();
+  const { data: rawProjects = [], isLoading: projectsLoading } = useProjects();
+  const { data: allInfra = [] } = useInfrastructures();
   const { data: gitops } = useGitOpsStatus();
+
+  // Catalog-visible units only (deployFlags / consoleProviderRelease).
+  const listedInfra = useMemo(
+    () =>
+      allInfra.filter(
+        (i) =>
+          i.status !== "destroyed" &&
+          isInfrastructureListed(i.provider, (i.type || "").toLowerCase())
+      ),
+    [allInfra]
+  );
+
+  const projects = useMemo((): Project[] => {
+    return rawProjects.map((p) => {
+      const units = listedInfra.filter((i) => i.project === p.slug);
+      const clouds = [
+        ...new Set(
+          units
+            .map((i) => String(i.provider || "").trim())
+            .filter((c) => c && isConsoleProviderReleased(c))
+        ),
+      ].sort((a, b) => a.localeCompare(b));
+      // Fall back to discovery clouds filtered by release when store is empty.
+      const displayClouds =
+        clouds.length > 0
+          ? clouds
+          : (p.clouds || []).filter((c) => isConsoleProviderReleased(c));
+      return {
+        ...p,
+        unitCount: units.length,
+        clouds: displayClouds.length > 0 ? displayClouds : p.clouds,
+        kind: displayClouds.length > 1 ? "multi-cloud" : "single-cloud",
+      };
+    });
+  }, [rawProjects, listedInfra]);
 
   // Auto-sync / Admin Sync: when desired-state commit or sync time changes, refresh project list.
   const syncFingerprint = `${gitops?.lastCommit ?? ""}|${gitops?.lastSyncAt ?? ""}`;
@@ -96,10 +135,22 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const projectSlug = selectedProject?.slug ?? null;
 
   // Environments for the selected project (picker). Global env list is fetched only where needed.
-  const { data: projectEnvironments = [], isLoading: envsLoading } = useEnvironments(
+  const { data: rawProjectEnvironments = [], isLoading: envsLoading } = useEnvironments(
     projectSlug,
     { enabled: !!projectSlug }
   );
+
+  const projectEnvironments = useMemo((): Environment[] => {
+    return rawProjectEnvironments.map((env) => {
+      const unitCount = listedInfra.filter(
+        (i) =>
+          i.project === projectSlug &&
+          (i.environment || "").toLowerCase() === (env.slug || "").toLowerCase()
+      ).length;
+      return { ...env, unitCount };
+    });
+  }, [rawProjectEnvironments, listedInfra, projectSlug]);
+
   const allEnvironments = projectEnvironments;
 
   useEffect(() => {

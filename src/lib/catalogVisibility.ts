@@ -11,6 +11,7 @@
 
 import {
   deployFlags,
+  isConsoleProviderReleased,
   isDeployEnabled,
   normalizeProviderId,
 } from "@/config/featureFlags";
@@ -55,12 +56,17 @@ export function isConsoleOfferingEnabled(
 
 /**
  * Infrastructure / Monitoring list: show enabled offerings; show invalid
- * vocabulary so operators can open detail and fix JSON; hide flagged-off.
+ * vocabulary on released providers so operators can fix JSON; hide
+ * flagged-off offerings and anything under an unreleased cloud.
  */
 export function infrastructureListVisibility(
   provider: string | undefined,
   subtype: string
 ): CatalogListVisibility {
+  // Unreleased cloud → never list (even unknown subtypes / bad JSON).
+  if (!isConsoleProviderReleased(provider)) {
+    return "hidden";
+  }
   const t = normalizeSubtype(subtype);
   if (!t || t === "unknown" || !isCatalogSubtypeKnown(provider, t)) {
     return "invalid";
@@ -69,6 +75,14 @@ export function infrastructureListVisibility(
     return "hidden";
   }
   return "visible";
+}
+
+/** True when a unit should appear in Infrastructure / sync / env counts. */
+export function isInfrastructureListed(
+  provider: string | undefined,
+  subtype: string
+): boolean {
+  return infrastructureListVisibility(provider, subtype) !== "hidden";
 }
 
 /** Live unit that remains after the console offering was turned off. */

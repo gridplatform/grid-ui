@@ -390,6 +390,10 @@ export function useGitOpsStatus() {
         infrastructures: Array<{
           id: string;
           name: string;
+          provider?: string;
+          type?: string;
+          project?: string;
+          environment?: string;
           gitPath?: string;
           gitCommit?: string;
           gitContentHash?: string;
