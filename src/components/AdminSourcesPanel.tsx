@@ -9,8 +9,28 @@ import {
   useSaveModuleBankSettings,
 } from "@/hooks/useGridApi";
 
+function authExpiryBanner(expiresAt?: string): { kind: "ok" | "warn" | "error"; text: string } | null {
+  if (!expiresAt) return null;
+  const end = new Date(`${expiresAt}T23:59:59Z`).getTime();
+  if (Number.isNaN(end)) return null;
+  const days = Math.ceil((end - Date.now()) / (24 * 60 * 60 * 1000));
+  if (days < 0) {
+    return {
+      kind: "error",
+      text: `Host Git token marked expired on ${expiresAt}. Create a new PAT/deploy token on your Git host and update Sources.`,
+    };
+  }
+  if (days <= 14) {
+    return {
+      kind: "warn",
+      text: `Host Git token expires on ${expiresAt} (${days} day${days === 1 ? "" : "s"} left). Rotate before Sync breaks.`,
+    };
+  }
+  return { kind: "ok", text: `Host Git token valid until ${expiresAt}.` };
+}
+
 /**
- * Admin-only: where desired-state JSON and the Terraform module bank come from.
+ * Admin-only: where intent JSON and the Terraform module bank come from.
  * Named "Sources" so "GitOps" stays free for future Argo CD / CD pipelines.
  */
 export function AdminSourcesPanel() {
@@ -26,6 +46,10 @@ export function AdminSourcesPanel() {
   const [pathPrefix, setPathPrefix] = useState("");
   const [syncIntervalSec, setSyncIntervalSec] = useState(0);
   const [enabled, setEnabled] = useState(true);
+  const [gitUsername, setGitUsername] = useState("");
+  const [gitToken, setGitToken] = useState("");
+  const [tokenExpiresAt, setTokenExpiresAt] = useState("");
+  const [clearAuth, setClearAuth] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [moduleNote, setModuleNote] = useState<string | null>(null);
@@ -40,24 +64,64 @@ export function AdminSourcesPanel() {
     setPathPrefix(status.settings.pathPrefix || "");
     setSyncIntervalSec(status.settings.syncIntervalSec || 0);
     setEnabled(status.settings.enabled !== false);
+    setTokenExpiresAt(status.settings.authExpiresAt || "");
     setHydrated(true);
   }, [status, hydrated]);
 
   const handleSave = async () => {
     try {
-      await saveSettings.mutateAsync({
+      const body: Parameters<typeof saveSettings.mutateAsync>[0] = {
         repoUrl,
         branch,
         pathPrefix,
         syncIntervalSec,
         enabled,
-      });
-      setNote("Source settings saved.");
+      };
+      if (clearAuth) {
+        body.clearAuth = true;
+      } else {
+        if (gitToken.trim()) {
+          if (!gitUsername.trim()) {
+            setNote(
+              "HTTPS username is required when saving a new token (e.g. git, oauth2, x-token-auth)."
+            );
+            return;
+          }
+          if (!tokenExpiresAt.trim()) {
+            setNote(
+              "Set “Token valid until” to the expiry date from your Git host (required when saving a new token)."
+            );
+            return;
+          }
+          body.username = gitUsername.trim();
+          body.token = gitToken.trim();
+          body.tokenExpiresAt = tokenExpiresAt.trim();
+        } else {
+          if (gitUsername.trim()) body.username = gitUsername.trim();
+          if (tokenExpiresAt.trim() && status?.settings?.authConfigured) {
+            body.tokenExpiresAt = tokenExpiresAt.trim();
+          }
+        }
+      }
+      const saved = await saveSettings.mutateAsync(body);
+      setGitToken("");
+      setClearAuth(false);
+      setNote(
+        saved.authConfigured
+          ? `Source settings saved (HTTPS auth configured${
+              saved.authExpiresAt ? `, valid until ${saved.authExpiresAt}` : ""
+            }).`
+          : "Source settings saved."
+      );
       await refetch();
     } catch (e) {
       setNote(e instanceof Error ? e.message : "Save failed");
     }
   };
+
+  const expiryInfo = status?.settings?.authConfigured
+    ? authExpiryBanner(status.settings.authExpiresAt)
+    : null;
 
   const handleDesiredStateSync = async () => {
     try {
@@ -119,9 +183,9 @@ export function AdminSourcesPanel() {
           Sources
         </h2>
         <p className="text-xs text-muted-foreground mt-1">
-          Configure where Grid pulls <strong>desired-state</strong> JSON and the{" "}
-          <strong>Terraform module bank</strong>. Sync is available here and on Infrastructure
-          (drift lives on Infrastructure).
+          Configure where Grid pulls <strong>intent</strong> JSON (any Git host — GitHub, GitLab,
+          Bitbucket, Gitea, …) and the <strong>Terraform module bank</strong>. Sync is available
+          here and on Infrastructure (drift lives on Infrastructure).
         </p>
       </div>
 
@@ -134,11 +198,13 @@ export function AdminSourcesPanel() {
       <div className="rounded-lg border border-border bg-background p-4 space-y-3">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
-            <h3 className="text-sm font-medium text-foreground">Desired-state repository</h3>
+            <h3 className="text-sm font-medium text-foreground">Intent repository</h3>
             <p className="text-xs text-muted-foreground mt-1">
-              Git repo with{" "}
+              Private or public Git repo with{" "}
               <code className="font-mono">projects/&lt;app&gt;/&lt;cloud&gt;/&lt;env&gt;/…</code>.
-              Synced into <code className="font-mono">GRID_CONFIG_ROOT</code>.
+              Synced into <code className="font-mono">GRID_CONFIG_ROOT</code>. HTTPS tokens are
+              stored under the data directory (not in the URL); SSH deploy keys on the host also
+              work.
             </p>
           </div>
           <button
@@ -158,10 +224,90 @@ export function AdminSourcesPanel() {
           <input
             value={repoUrl}
             onChange={(e) => setRepoUrl(e.target.value)}
-            placeholder="https://github.com/org/desired-state.git"
+            placeholder="https://git.example.com/org/intent.git or git@host:org/intent.git"
             className="mt-1 w-full px-3 py-2 rounded-md bg-secondary border border-border text-sm text-foreground"
           />
         </label>
+        <p className="text-xs text-muted-foreground border border-border rounded-md px-3 py-2 bg-secondary/40">
+          Grid does <strong>not</strong> generate this secret. Create a{" "}
+          <strong>personal access token</strong>, <strong>deploy token</strong>, or{" "}
+          <strong>app password</strong> on your Git host (GitHub, GitLab, Bitbucket, Gitea, …)
+          with read access to the intent repo, paste it below, and set when that host token
+          expires.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <label className="block text-xs text-muted-foreground">
+            HTTPS username (required with token)
+            <input
+              value={gitUsername}
+              onChange={(e) => setGitUsername(e.target.value)}
+              placeholder="git (GitLab: oauth2, Bitbucket: x-token-auth)"
+              autoComplete="off"
+              required={Boolean(gitToken.trim())}
+              className="mt-1 w-full px-3 py-2 rounded-md bg-secondary border border-border text-sm text-foreground"
+            />
+          </label>
+          <label className="block text-xs text-muted-foreground">
+            Host token (PAT / deploy token)
+            <input
+              type="password"
+              value={gitToken}
+              onChange={(e) => {
+                setGitToken(e.target.value);
+                if (e.target.value) setClearAuth(false);
+              }}
+              placeholder={
+                status?.settings?.authConfigured
+                  ? "•••• configured — leave blank to keep"
+                  : "Paste token from your Git host"
+              }
+              autoComplete="new-password"
+              className="mt-1 w-full px-3 py-2 rounded-md bg-secondary border border-border text-sm text-foreground"
+            />
+          </label>
+          <label className="block text-xs text-muted-foreground">
+            Token valid until
+            <input
+              type="date"
+              value={tokenExpiresAt}
+              onChange={(e) => {
+                setTokenExpiresAt(e.target.value);
+                if (e.target.value) setClearAuth(false);
+              }}
+              required={Boolean(gitToken.trim())}
+              className="mt-1 w-full px-3 py-2 rounded-md bg-secondary border border-border text-sm text-foreground"
+            />
+          </label>
+        </div>
+        {expiryInfo && (
+          <p
+            className={`text-xs rounded-md px-3 py-2 border ${
+              expiryInfo.kind === "error"
+                ? "border-destructive/40 text-destructive bg-destructive/5"
+                : expiryInfo.kind === "warn"
+                  ? "border-amber-500/40 text-amber-700 dark:text-amber-400 bg-amber-500/5"
+                  : "border-border text-muted-foreground bg-background"
+            }`}
+          >
+            {expiryInfo.text}
+          </p>
+        )}
+        {status?.settings?.authConfigured && (
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={clearAuth}
+              onChange={(e) => {
+                setClearAuth(e.target.checked);
+                if (e.target.checked) {
+                  setGitToken("");
+                  setTokenExpiresAt("");
+                }
+              }}
+            />
+            Clear stored HTTPS credentials
+          </label>
+        )}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <label className="block text-xs text-muted-foreground">
             Branch

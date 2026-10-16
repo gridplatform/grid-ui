@@ -204,9 +204,9 @@ export function useInfrastructure(id: string) {
  */
 export function useDeployInfrastructure() {
   const queryClient = useQueryClient();
-
+  
   return useMutation({
-    mutationFn: (id: string) =>
+    mutationFn: (id: string) => 
       gridFetch<Release>(`/infrastructures/${id}/apply`, { method: "POST" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["releases"] });
@@ -373,6 +373,23 @@ export type GitOpsSettings = {
   syncIntervalSec: number;
   enabled: boolean;
   updatedAt?: string;
+  /** True when a token is stored for private HTTPS remotes (secret never returned). */
+  authConfigured?: boolean;
+  /** Host token expiry (YYYY-MM-DD) — safe to show; not a secret. */
+  authExpiresAt?: string;
+};
+
+export type GitOpsSettingsWrite = Omit<
+  GitOpsSettings,
+  "updatedAt" | "authConfigured" | "authExpiresAt"
+> & {
+  /** Write-only host PAT/deploy token; omit/empty keeps existing. */
+  token?: string;
+  /** HTTPS username override (e.g. oauth2, x-token-auth). Empty clears. */
+  username?: string;
+  /** Required when setting a new token — expiry from your Git host (YYYY-MM-DD). */
+  tokenExpiresAt?: string;
+  clearAuth?: boolean;
 };
 
 export function useGitOpsStatus() {
@@ -409,7 +426,7 @@ export function useGitOpsStatus() {
 export function useSaveGitOpsSettings() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: Omit<GitOpsSettings, "updatedAt">) =>
+    mutationFn: (body: GitOpsSettingsWrite) =>
       gridFetch<GitOpsSettings>("/gitops/settings", {
         method: "PUT",
         body: JSON.stringify(body),
@@ -510,7 +527,7 @@ export function useSaveModuleBankSettings() {
  */
 export function useCloneInfrastructure() {
   const queryClient = useQueryClient();
-
+  
   return useMutation({
     mutationFn: ({ id, targetEnvironment }: { id: string; targetEnvironment: string }) =>
       gridFetch<Infrastructure>(`/infrastructures/${id}/clone`, {
@@ -594,7 +611,7 @@ export function useDeploymentLogs(id: string) {
  */
 export function useCancelDeployment() {
   const queryClient = useQueryClient();
-
+  
   return useMutation({
     mutationFn: (id: string) =>
       gridFetch<void>(`/deployments/${id}/cancel`, { method: "POST" }),
@@ -678,7 +695,7 @@ export function usePendingApprovals() {
  */
 export function useApproveRelease() {
   const queryClient = useQueryClient();
-
+  
   return useMutation({
     mutationFn: ({ id, comment }: { id: string; comment?: string }) =>
       gridFetch<Approval>(`/approvals/${id}/approve`, {
@@ -698,7 +715,7 @@ export function useApproveRelease() {
  */
 export function useRejectRelease() {
   const queryClient = useQueryClient();
-
+  
   return useMutation({
     mutationFn: ({ id, comment }: { id: string; comment: string }) =>
       gridFetch<Approval>(`/approvals/${id}/reject`, {
@@ -736,7 +753,7 @@ export function useCancelRelease() {
  */
 export function useRollbackRelease() {
   const queryClient = useQueryClient();
-
+  
   return useMutation({
     mutationFn: (id: string) =>
       gridFetch<Release>(`/releases/${id}/rollback`, { method: "POST" }),
@@ -765,7 +782,7 @@ export function useClusters() {
  */
 export function useScaleCluster() {
   const queryClient = useQueryClient();
-
+  
   return useMutation({
     mutationFn: ({ id, nodes }: { id: string; nodes: number }) =>
       gridFetch<Cluster>(`/clusters/${id}/scale`, {
