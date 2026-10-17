@@ -85,6 +85,8 @@ const PROVIDER_REGION_HINTS: Record<string, string> = {
   openshift: "us-east-1",
   "redis-enterprise": "us-east-1",
   "confluent-cloud": "us-east-1",
+  utho: "inmumbaizone2",
+  mongodb: "us-east-1",
 };
 
 export function regionHintFor(provider: string): string {
