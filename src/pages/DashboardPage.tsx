@@ -14,27 +14,53 @@ import {
   useInfrastructures,
 } from "@/hooks/useGridApi";
 import { productFlags } from "@/config/features";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
+import { isInfrastructureListed } from "@/lib/catalogVisibility";
 
 const DashboardPage = () => {
   const navigate = useNavigate();
-  const { data: infrastructures = [], isLoading: infraLoading } = useInfrastructures();
+  const { projectSlug, envSlug } = useWorkspace();
+  const workspaceReady = !!projectSlug && !!envSlug;
+  const { data: infrastructures = [], isLoading: infraLoading } = useInfrastructures({
+    project: projectSlug,
+    environment: envSlug,
+    enabled: workspaceReady,
+  });
   const { data: alerts = [] } = useAlerts();
   const { data: services = [] } = useAPMServices();
   const { data: deployments = [] } = useDeployments();
-  const { data: environments = [] } = useEnvironments();
+  const { data: environments = [] } = useEnvironments(projectSlug, {
+    enabled: !!projectSlug,
+  });
   const { data: gitops } = useGitOpsStatus();
 
-  const infraSummary = useMemo(() => {
-    const total = infrastructures.length;
-    const running = infrastructures.filter((r) => r.status === "running").length;
-    const errors = infrastructures.filter((r) => r.status === "error").length;
-    const degraded = infrastructures.filter((r) => r.status === "degraded").length;
-    const stale = infrastructures.filter((r) => r.status === "stale").length;
-    return { total, running, errors, degraded, stale };
-  }, [infrastructures]);
+  const listed = useMemo(
+    () =>
+      infrastructures.filter((r) =>
+        isInfrastructureListed(r.provider, (r.type || "").toLowerCase())
+      ),
+    [infrastructures]
+  );
 
+  const infraSummary = useMemo(() => {
+    const total = listed.length;
+    const running = listed.filter((r) => r.status === "running").length;
+    const errors = listed.filter((r) => r.status === "error").length;
+    const degraded = listed.filter((r) => r.status === "degraded").length;
+    const stale = listed.filter((r) => r.status === "stale").length;
+    return { total, running, errors, degraded, stale };
+  }, [listed]);
+
+  const listedIds = useMemo(() => new Set(listed.map((r) => r.id)), [listed]);
   const firingAlerts = alerts.filter((a) => a.status === "firing");
-  const recentDeployments = [...deployments].slice(-5).reverse();
+  const recentDeployments = [...deployments]
+    .filter((d) => {
+      if (!workspaceReady) return false;
+      if (d.infrastructureId) return listedIds.has(d.infrastructureId);
+      return !d.environment || d.environment === envSlug;
+    })
+    .slice(-5)
+    .reverse();
   const avgErrorRate =
     services.length > 0
       ? (services.reduce((s, svc) => s + svc.errorRate, 0) / services.length).toFixed(1)
@@ -47,7 +73,7 @@ const DashboardPage = () => {
   const stats = [
     {
       label: "Infrastructure",
-      value: infraLoading ? "…" : `${infraSummary.total}`,
+      value: !workspaceReady || infraLoading ? "…" : `${infraSummary.total}`,
       sub:
         infraSummary.stale > 0
           ? `${infraSummary.running} running · ${infraSummary.stale} removed from config`
