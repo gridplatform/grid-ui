@@ -7,7 +7,7 @@ const ProviderLabelNode = ({ data }: NodeProps) => {
     <div className="flex items-center gap-3 select-none pointer-events-none">
       <span className="text-base font-bold text-foreground tracking-tight">{d.label}</span>
       <span className="text-xs text-muted-foreground">
-        {d.vpcCount} VPCs · {d.totalResources} resources
+        {d.environmentCount} environments · {d.totalResources} resources
       </span>
       {d.healthCounts?.critical > 0 && (
         <span className="text-xs text-destructive font-medium">{d.healthCounts.critical} critical</span>

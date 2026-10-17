@@ -5,8 +5,9 @@
  *
  * How to use:
  * 1. Pages / tabs — `productFlags` (true = show, false = hide).
- * 2. Clouds in Deployments — `consoleProviderRelease` (true = offer that provider).
- * 3. Provider × resource type — `deployFlags` (true = offer that target).
+ * 2. Providers offered in the console — `consoleProviderRelease` (true = offer that provider).
+ * 3. Provider × resource type — `deployFlags` (true = offer that type).
+ *    These two booleans are the only enable switch. Lists read them; they do not keep a second copy.
  *    Example: under `"aws"`, set `"ec2-instance": true`.
  *
  * Provider / type keys match module-bank folder names (same as resourceCatalog).

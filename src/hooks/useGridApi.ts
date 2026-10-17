@@ -17,7 +17,7 @@ import {
 } from "@/lib/driftCheckStore";
 import type {
   TopologyProvider,
-  TopologyVpc,
+  TopologyEnvironment,
   TopologyResource,
   Infrastructure,
   InfrastructureListItem,
@@ -124,35 +124,34 @@ async function gridFetch<T>(endpoint: string, options?: RequestInit): Promise<T>
  * Fetch all topology providers with VPCs and resources
  * GET /api/v1/topology/providers
  */
-export function useTopologyProviders() {
+export function useTopologyProviders(projectSlug?: string | null) {
+  const project = projectSlug?.trim() || undefined;
   return useQuery({
-    queryKey: ["topology", "providers"],
-    queryFn: () => gridFetch<TopologyProvider[]>("/topology/providers"),
+    queryKey: ["topology", "providers", project || "none"],
+    queryFn: () =>
+      gridFetch<TopologyProvider[]>(
+        `/topology/providers?project=${encodeURIComponent(project || "")}`
+      ),
+    enabled: !!project,
     staleTime: 30_000,
   });
 }
 
-/**
- * Fetch VPCs for a specific provider
- * GET /api/v1/topology/providers/:id/vpcs
- */
-export function useProviderVpcs(providerId: string) {
+/** Environment circles for one provider. */
+export function useProviderEnvironments(providerId: string) {
   return useQuery({
-    queryKey: ["topology", "providers", providerId, "vpcs"],
-    queryFn: () => gridFetch<TopologyVpc[]>(`/topology/providers/${providerId}/vpcs`),
+    queryKey: ["topology", "providers", providerId, "environments"],
+    queryFn: () => gridFetch<TopologyEnvironment[]>(`/topology/providers/${providerId}/vpcs`),
     enabled: !!providerId,
   });
 }
 
-/**
- * Fetch resources for a specific VPC
- * GET /api/v1/topology/vpcs/:id/resources
- */
-export function useVpcResources(vpcId: string) {
+/** Resources inside one environment circle. */
+export function useEnvironmentResources(environmentId: string) {
   return useQuery({
-    queryKey: ["topology", "vpcs", vpcId, "resources"],
-    queryFn: () => gridFetch<TopologyResource[]>(`/topology/vpcs/${vpcId}/resources`),
-    enabled: !!vpcId,
+    queryKey: ["topology", "environments", environmentId, "resources"],
+    queryFn: () => gridFetch<TopologyResource[]>(`/topology/vpcs/${environmentId}/resources`),
+    enabled: !!environmentId,
   });
 }
 

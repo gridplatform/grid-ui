@@ -51,7 +51,7 @@ export function buildProviderView(providers: CloudProvider[]): { nodes: Node[]; 
     data: {
       label: p.name,
       providerType: p.type,
-      vpcCount: p.vpcs.length,
+      environmentCount: p.environments.length,
       totalResources: p.totalResources,
       healthCounts: p.healthCounts,
     },
@@ -70,12 +70,12 @@ export function buildVpcView(vpcs: Vpc[]): { nodes: Node[]; edges: Edge[] } {
   const edgeSpecs: { source: string; target: string; label: string; connType: string }[] = [];
   const seen = new Set<string>();
   vpcs.forEach((v) => {
-    v.vpcConnections.forEach((conn) => {
-      if (!vpcIds.has(conn.targetVpcId)) return;
-      const key = [v.id, conn.targetVpcId].sort().join("-");
+    v.connections.forEach((conn) => {
+      if (!vpcIds.has(conn.targetId)) return;
+      const key = [v.id, conn.targetId].sort().join("-");
       if (!seen.has(key)) {
         seen.add(key);
-        edgeSpecs.push({ source: v.id, target: conn.targetVpcId, label: conn.label || conn.type, connType: conn.type });
+        edgeSpecs.push({ source: v.id, target: conn.targetId, label: conn.label || conn.type, connType: conn.type });
       }
     });
   });
@@ -100,7 +100,7 @@ export function buildVpcView(vpcs: Vpc[]): { nodes: Node[]; edges: Edge[] } {
       healthCounts: v.healthCounts,
       status: v.status,
       layerCounts: layerCounts(v.resources),
-      connectionCount: v.vpcConnections.length,
+      connectionCount: v.connections.length,
     },
   }));
 
@@ -114,8 +114,8 @@ export function buildVpcView(vpcs: Vpc[]): { nodes: Node[]; edges: Edge[] } {
 
   // Also add cross-provider VPC connections
   vpcs.forEach((v) => {
-    v.vpcConnections.forEach((conn) => {
-      if (vpcIds.has(conn.targetVpcId)) return; // already handled above
+    v.connections.forEach((conn) => {
+      if (vpcIds.has(conn.targetId)) return;
       // These connect to VPCs not in this view — show as a "ghost" edge label on the VPC node
     });
   });
@@ -160,7 +160,7 @@ export function buildRadialResourceView(resources: VpcResource[]): { nodes: Node
   const nodes: Node[] = [];
 
   // Add ring guide nodes
-  const layerEntries: ResourceLayer[] = ["waf", "network", "loadbalancer", "application", "data"];
+  const layerEntries: ResourceLayer[] = ["waf", "network", "loadbalancer", "application", "data", "ai-ml", "observability"];
   layerEntries.forEach((layer) => {
     const radius = layerRadii[layer];
     if (radius === 0) return; // skip center ring guide

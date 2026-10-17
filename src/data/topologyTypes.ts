@@ -1,14 +1,7 @@
 /**
- * VPC-Centric Topology Data Model
- * 
- * 3 levels: Provider → VPC → Resources (radial layout)
- * Within a VPC: WAF → Network → Load Balancer → Application → Data (concentric rings)
- * 
- * This file re-exports types from the central API types for backwards compatibility.
- * New code should import directly from @/types/api.
- * 
- * @see src/types/api.ts for authoritative type definitions
- * @see README.md for backend API contract documentation
+ * Topology rings and labels.
+ * A circle is one provider in one environment. Types inside the circle sit on rings.
+ * Provider and subtype enablement lives in featureFlags.ts.
  */
 
 // Re-export from central types for backwards compatibility
@@ -27,9 +20,6 @@ import type {
   VpcResourceType,
   HealthStatus,
   CloudProviderType,
-  TopologyResource,
-  TopologyVpc,
-  TopologyProvider,
 } from "@/types/api";
 
 /**
@@ -42,7 +32,7 @@ export interface VpcResource {
   type: VpcResourceType;
   layer: ResourceLayer;
   status: HealthStatus;
-  /** IDs of connected resources (within or across VPCs) */
+  /** Ids of connected resources in this circle or another. */
   connections: string[];
   cpu?: string;
   memory?: string;
@@ -51,25 +41,14 @@ export interface VpcResource {
   meta?: Record<string, string>;
 }
 
-/**
- * VPC Connection
- */
+/** Link from one environment circle to another. */
 export interface VpcConnection {
-  targetVpcId: string;
+  targetId: string;
   type: VpcConnectionType;
   label?: string;
 }
 
-export interface VpcConnection {
-  targetVpcId: string;
-  type: VpcConnectionType;
-  label?: string;
-}
-
-/**
- * VPC containing resources
- * @deprecated Use TopologyVpc from @/types/api instead
- */
+/** @deprecated Use TopologyEnvironment from @/types/api. */
 export interface Vpc {
   id: string;
   name: string;
@@ -79,7 +58,7 @@ export interface Vpc {
   cidr: string;
   providerId: string;
   resources: VpcResource[];
-  vpcConnections: VpcConnection[];
+  connections: VpcConnection[];
   totalResources: number;
   healthCounts: { healthy: number; warning: number; critical: number };
   status: HealthStatus;
@@ -93,7 +72,7 @@ export interface CloudProvider {
   id: string;
   name: string;
   type: "AWS" | "GCP" | "Azure" | "On-Prem";
-  vpcs: Vpc[];
+  environments: Vpc[];
   totalResources: number;
   healthCounts: { healthy: number; warning: number; critical: number };
 }
@@ -108,7 +87,15 @@ export interface TopologyBreadcrumb {
 
 // ─── Layer Configuration ────────────────────────────────────────────────────
 
-export const layerOrder: ResourceLayer[] = ["waf", "network", "loadbalancer", "application", "data"];
+export const layerOrder: ResourceLayer[] = [
+  "waf",
+  "network",
+  "loadbalancer",
+  "application",
+  "data",
+  "ai-ml",
+  "observability",
+];
 
 export const layerLabels: Record<ResourceLayer, string> = {
   waf: "WAF / Security",
@@ -116,6 +103,8 @@ export const layerLabels: Record<ResourceLayer, string> = {
   loadbalancer: "Load Balancers",
   application: "Application",
   data: "Data Layer",
+  "ai-ml": "AI / ML",
+  observability: "Observability",
 };
 
 /**
@@ -133,6 +122,8 @@ export const layerRadii: Record<ResourceLayer, number> = {
   loadbalancer: 240,
   application: 320,
   data: 400,
+  "ai-ml": 480,
+  observability: 560,
 };
 
 /**
@@ -175,7 +166,7 @@ export const layerForType: Record<VpcResourceType, ResourceLayer> = {
   "ml-training": "application",
   "ml-inference": "application",
   "gpu-pool": "application",
-  sagemaker: "application",
+  sagemaker: "ai-ml",
   // Data
   rds: "data",
   "cloud-sql": "data",

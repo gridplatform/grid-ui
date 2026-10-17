@@ -19,11 +19,10 @@ import { isInfrastructureListed } from "@/lib/catalogVisibility";
 
 const DashboardPage = () => {
   const navigate = useNavigate();
-  const { projectSlug, envSlug } = useWorkspace();
-  const workspaceReady = !!projectSlug && !!envSlug;
+  const { projectSlug } = useWorkspace();
+  const workspaceReady = !!projectSlug;
   const { data: infrastructures = [], isLoading: infraLoading } = useInfrastructures({
     project: projectSlug,
-    environment: envSlug,
     enabled: workspaceReady,
   });
   const { data: alerts = [] } = useAlerts();
@@ -54,11 +53,7 @@ const DashboardPage = () => {
   const listedIds = useMemo(() => new Set(listed.map((r) => r.id)), [listed]);
   const firingAlerts = alerts.filter((a) => a.status === "firing");
   const recentDeployments = [...deployments]
-    .filter((d) => {
-      if (!workspaceReady) return false;
-      if (d.infrastructureId) return listedIds.has(d.infrastructureId);
-      return !d.environment || d.environment === envSlug;
-    })
+    .filter((d) => workspaceReady && !!d.infrastructureId && listedIds.has(d.infrastructureId))
     .slice(-5)
     .reverse();
   const avgErrorRate =

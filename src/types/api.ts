@@ -51,7 +51,14 @@ export interface HealthCounts {
 
 // ─── Topology Types (matches README.md Backend API Contract) ────────────────
 
-export type ResourceLayer = "waf" | "network" | "loadbalancer" | "application" | "data";
+export type ResourceLayer =
+  | "waf"
+  | "network"
+  | "loadbalancer"
+  | "application"
+  | "data"
+  | "ai-ml"
+  | "observability";
 
 export type VpcResourceType =
   // WAF / Security
@@ -96,21 +103,15 @@ export interface TopologyResource {
   meta?: Record<string, string>;
 }
 
-/**
- * Cross-VPC connection
- * GET /api/v1/topology/vpcs/:id/connections → VpcConnection[]
- */
+/** Link from one environment circle to another. */
 export interface VpcConnection {
-  targetVpcId: string;
+  targetId: string;
   type: VpcConnectionType;
   label?: string;
 }
 
-/**
- * VPC containing resources
- * GET /api/v1/topology/providers/:id/vpcs → TopologyVpc[]
- */
-export interface TopologyVpc {
+/** One circle: a single provider in a single environment. */
+export interface TopologyEnvironment {
   id: string;
   name: string;
   /** Catalog type from resolveResourceType (metadata.kind, primary resource, or git path). */
@@ -119,7 +120,7 @@ export interface TopologyVpc {
   cidr: string;
   providerId: string;
   resources: TopologyResource[];
-  vpcConnections: VpcConnection[];
+  connections: VpcConnection[];
   totalResources: number;
   healthCounts: HealthCounts;
   status: HealthStatus;
@@ -133,7 +134,7 @@ export interface TopologyProvider {
   id: string;
   name: string;
   type: CloudProviderType;
-  vpcs: TopologyVpc[];
+  environments: TopologyEnvironment[];
   totalResources: number;
   healthCounts: HealthCounts;
 }

@@ -30,6 +30,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { DeploymentLiveLogs } from "@/components/DeploymentLiveLogs";
 import { canApproveReleases, isAdminLike } from "@/lib/rbac";
+import { isInfrastructureListed } from "@/lib/catalogVisibility";
 import type { Release, ReleaseMode, ReleaseStatus } from "@/types/api";
 
 const statusConfig: Partial<
@@ -107,33 +108,40 @@ const ReleasesPage = () => {
     return releases.filter((r) => r.environment === envFilter);
   }, [releases, envFilter]);
 
+  const offeredInfrastructures = useMemo(
+    () =>
+      infrastructures.filter((i) =>
+        isInfrastructureListed(i.provider, (i.type || "").toLowerCase())
+      ),
+    [infrastructures]
+  );
+
   const providersForEnv = useMemo(() => {
-    // Catalog is config-driven — include every unit (pending after destroy, etc.).
-    const list = infrastructures.filter(
+    const list = offeredInfrastructures.filter(
       (i) => !environment || i.environment === environment
     );
     return [...new Set(list.map((i) => i.provider).filter(Boolean))].sort((a, b) =>
       a.localeCompare(b)
     );
-  }, [infrastructures, environment]);
+  }, [offeredInfrastructures, environment]);
 
   const infraForEnv = useMemo(() => {
-    return infrastructures.filter((i) => {
+    return offeredInfrastructures.filter((i) => {
       if (environment && i.environment !== environment) return false;
       if (provider && i.provider !== provider) return false;
       return true;
     });
-  }, [infrastructures, environment, provider]);
+  }, [offeredInfrastructures, environment, provider]);
 
   const drifted = useMemo(
     () =>
-      infrastructures.filter(
+      offeredInfrastructures.filter(
         (i) =>
           i.status === "stale" ||
           (i.status !== "destroyed" &&
             typeof (i as { config?: { gitContentHash?: string } }).config === "object")
       ),
-    [infrastructures]
+    [offeredInfrastructures]
   );
 
   const openModal = () => {

@@ -183,8 +183,8 @@ export function AdminSourcesPanel() {
           Sources
         </h2>
         <p className="text-xs text-muted-foreground mt-1">
-          Configure where Grid pulls <strong>intent</strong> JSON (any Git host — GitHub, GitLab,
-          Bitbucket, Gitea, …) and the <strong>Terraform module bank</strong>. Sync is available
+          Configure where Grid pulls <strong>intent</strong> JSON (any Git host) and the{" "}
+          <strong>Terraform module bank</strong>. Sync is available
           here and on Infrastructure (drift lives on Infrastructure).
         </p>
       </div>
@@ -231,7 +231,7 @@ export function AdminSourcesPanel() {
         <p className="text-xs text-muted-foreground border border-border rounded-md px-3 py-2 bg-secondary/40">
           Grid does <strong>not</strong> generate this secret. Create a{" "}
           <strong>personal access token</strong>, <strong>deploy token</strong>, or{" "}
-          <strong>app password</strong> on your Git host (GitHub, GitLab, Bitbucket, Gitea, …)
+          <strong>app password</strong> on your Git host
           with read access to the intent repo, paste it below, and set when that host token
           expires.
         </p>

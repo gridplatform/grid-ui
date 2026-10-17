@@ -10,12 +10,12 @@ import {
 import "@xyflow/react/dist/style.css";
 import type { TopologyProvider } from "@/types/api";
 import type { ResourceLayer } from "@/data/topologyTypes";
-import VpcBubbleNode from "./topology/VpcBubbleNode";
+import EnvironmentBubbleNode from "./topology/EnvironmentBubbleNode";
 import ProviderLabelNode from "./topology/ProviderLabelNode";
 import { buildBubbleLayout } from "./topology/useBubbleLayout";
 
 const nodeTypes = {
-  vpcBubble: VpcBubbleNode,
+  environmentBubble: EnvironmentBubbleNode,
   providerLabel: ProviderLabelNode,
 };
 
@@ -26,28 +26,28 @@ interface TopologyDiagramProps {
 }
 
 const TopologyDiagram = ({ providers, visibleLayers, visibleProviders }: TopologyDiagramProps) => {
-  const [expandedVpcs, setExpandedVpcs] = useState<Set<string>>(new Set());
+  const [expandedEnvironments, setExpandedEnvironments] = useState<Set<string>>(new Set());
   const [hoveredResource, setHoveredResource] = useState<string | null>(null);
 
   // Pre-build resource lookup maps
-  const { resourceToVpc, resourceConnections } = useMemo(() => {
-    const r2v = new Map<string, string>();
-    const rConn = new Map<string, string[]>();
-    providers.forEach((p) =>
-      p.vpcs.forEach((v) =>
-        v.resources.forEach((r) => {
-          r2v.set(r.id, v.id);
-          rConn.set(r.id, r.connections);
+  const { resourceToEnvironment, resourceConnections } = useMemo(() => {
+    const resourceEnvironment = new Map<string, string>();
+    const resourceLinks = new Map<string, string[]>();
+    providers.forEach((provider) =>
+      provider.environments.forEach((environment) =>
+        environment.resources.forEach((resource) => {
+          resourceEnvironment.set(resource.id, environment.id);
+          resourceLinks.set(resource.id, resource.connections);
         })
       )
     );
-    return { resourceToVpc: r2v, resourceConnections: rConn };
+    return { resourceToEnvironment: resourceEnvironment, resourceConnections: resourceLinks };
   }, [providers]);
 
-  const toggleExpand = useCallback((vpcId: string) => {
-    setExpandedVpcs((prev) => {
+  const toggleExpand = useCallback((environmentId: string) => {
+    setExpandedEnvironments((prev) => {
       const next = new Set(prev);
-      next.has(vpcId) ? next.delete(vpcId) : next.add(vpcId);
+      next.has(environmentId) ? next.delete(environmentId) : next.add(environmentId);
       return next;
     });
   }, []);
@@ -59,8 +59,8 @@ const TopologyDiagram = ({ providers, visibleLayers, visibleProviders }: Topolog
 
   // Base layout — only recomputes on structural changes
   const baseLayout = useMemo(
-    () => buildBubbleLayout(filteredProviders, expandedVpcs, visibleLayers, toggleExpand, setHoveredResource),
-    [filteredProviders, expandedVpcs, visibleLayers, toggleExpand]
+    () => buildBubbleLayout(filteredProviders, expandedEnvironments, visibleLayers, toggleExpand, setHoveredResource),
+    [filteredProviders, expandedEnvironments, visibleLayers, toggleExpand]
   );
 
   // Hover highlights — lightweight
@@ -69,46 +69,43 @@ const TopologyDiagram = ({ providers, visibleLayers, visibleProviders }: Topolog
     return new Set(resourceConnections.get(hoveredResource) || []);
   }, [hoveredResource, resourceConnections]);
 
-  // Find which VPCs are connected via the hovered resource
-  const sourceVpcId = hoveredResource ? resourceToVpc.get(hoveredResource) : null;
-  
-  const connectedVpcIds = useMemo(() => {
+  const sourceEnvironmentId = hoveredResource ? resourceToEnvironment.get(hoveredResource) : null;
+
+  const connectedEnvironmentIds = useMemo(() => {
     if (!hoveredResource) return new Set<string>();
     const ids = new Set<string>();
-    if (sourceVpcId) ids.add(sourceVpcId);
-    connectedResourceIds.forEach((rId) => {
-      const v = resourceToVpc.get(rId);
-      if (v) ids.add(v);
+    if (sourceEnvironmentId) ids.add(sourceEnvironmentId);
+    connectedResourceIds.forEach((resourceId) => {
+      const environmentId = resourceToEnvironment.get(resourceId);
+      if (environmentId) ids.add(environmentId);
     });
     return ids;
-  }, [hoveredResource, connectedResourceIds, resourceToVpc, sourceVpcId]);
+  }, [hoveredResource, connectedResourceIds, resourceToEnvironment, sourceEnvironmentId]);
 
-  // Cross-VPC target IDs (VPCs other than source that have connected resources)
-  const crossVpcTargets = useMemo(() => {
-    if (!sourceVpcId) return new Set<string>();
+  const otherEnvironmentIds = useMemo(() => {
+    if (!sourceEnvironmentId) return new Set<string>();
     const targets = new Set<string>();
-    connectedResourceIds.forEach((rId) => {
-      const v = resourceToVpc.get(rId);
-      if (v && v !== sourceVpcId) targets.add(v);
+    connectedResourceIds.forEach((resourceId) => {
+      const environmentId = resourceToEnvironment.get(resourceId);
+      if (environmentId && environmentId !== sourceEnvironmentId) targets.add(environmentId);
     });
     return targets;
-  }, [sourceVpcId, connectedResourceIds, resourceToVpc]);
+  }, [sourceEnvironmentId, connectedResourceIds, resourceToEnvironment]);
 
   // Apply hover state + focused connection edges
   const { nodes, edges } = useMemo(() => {
     const nodeIds = new Set(baseLayout.nodes.map((n) => n.id));
     
-    // Dim non-connected VPCs when hovering
     const nodes = baseLayout.nodes.map((n) => {
-      if (n.type !== "vpcBubble") return n;
-      const isDimmed = hoveredResource && !connectedVpcIds.has(n.id);
+      if (n.type !== "environmentBubble") return n;
+      const isDimmed = hoveredResource && !connectedEnvironmentIds.has(n.id);
       return {
         ...n,
         data: { 
           ...n.data, 
           hoveredResource, 
           connectedResourceIds, 
-          connectedVpcIds,
+          connectedEnvironmentIds,
           isDimmed,
         },
         style: isDimmed ? { opacity: 0.3, transition: "opacity 0.2s" } : { opacity: 1, transition: "opacity 0.2s" },
@@ -118,14 +115,13 @@ const TopologyDiagram = ({ providers, visibleLayers, visibleProviders }: Topolog
     // When hovering: hide default edges, show only active connection paths
     let edges: typeof baseLayout.edges = [];
     
-    if (hoveredResource && sourceVpcId) {
-      // Show ONLY the cross-VPC connections from hovered resource
-      crossVpcTargets.forEach((targetVpc) => {
-        if (nodeIds.has(targetVpc) && nodeIds.has(sourceVpcId)) {
+    if (hoveredResource && sourceEnvironmentId) {
+      otherEnvironmentIds.forEach((targetId) => {
+        if (nodeIds.has(targetId) && nodeIds.has(sourceEnvironmentId)) {
           edges.push({
-            id: `active-${sourceVpcId}-${targetVpc}`,
-            source: sourceVpcId,
-            target: targetVpc,
+            id: `active-${sourceEnvironmentId}-${targetId}`,
+            source: sourceEnvironmentId,
+            target: targetId,
             type: "straight",
             style: {
               stroke: "hsl(150 100% 50%)",
@@ -145,7 +141,7 @@ const TopologyDiagram = ({ providers, visibleLayers, visibleProviders }: Topolog
         }
       });
     } else {
-      // No hover: show subtle VPC-to-VPC edges
+      // No hover: keep the peering lines quiet.
       edges = baseLayout.edges.map(e => ({
         ...e,
         style: {
@@ -157,7 +153,7 @@ const TopologyDiagram = ({ providers, visibleLayers, visibleProviders }: Topolog
     }
 
     return { nodes, edges };
-  }, [baseLayout, hoveredResource, connectedResourceIds, connectedVpcIds, crossVpcTargets, sourceVpcId]);
+  }, [baseLayout, hoveredResource, connectedResourceIds, connectedEnvironmentIds, otherEnvironmentIds, sourceEnvironmentId]);
 
   return (
     <div className="h-full w-full rounded-lg border border-border bg-card overflow-hidden">
@@ -187,12 +183,14 @@ const TopologyDiagram = ({ providers, visibleLayers, visibleProviders }: Topolog
       </ReactFlow>
       
       {/* Connection Legend */}
-      {hoveredResource && crossVpcTargets.size > 0 && (
+      {hoveredResource && otherEnvironmentIds.size > 0 && (
         <div className="absolute bottom-4 left-4 bg-card/95 border border-border rounded-lg px-4 py-3 shadow-xl">
-          <div className="text-xs text-muted-foreground mb-2">Active Connection</div>
+          <div className="text-xs text-muted-foreground mb-2">Active connection</div>
           <div className="flex items-center gap-2">
             <div className="w-8 h-1 bg-[hsl(150_100%_50%)] rounded" />
-            <span className="text-sm text-foreground">Request flow to {crossVpcTargets.size} VPC(s)</span>
+            <span className="text-sm text-foreground">
+              Linked to {otherEnvironmentIds.size} environment{otherEnvironmentIds.size === 1 ? "" : "s"}
+            </span>
           </div>
         </div>
       )}

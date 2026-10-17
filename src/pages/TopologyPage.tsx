@@ -1,10 +1,12 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import AppShell from "@/components/AppShell";
 import TopologyDiagram from "@/components/TopologyDiagram";
 import { useTopologyProviders } from "@/hooks/useGridApi";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
+import { scopeTopologyProviders } from "@/lib/topologyScope";
 import { layerLabels, layerOrder, type ResourceLayer } from "@/data/topologyTypes";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Clock, Shield, Network, Gauge, Box, Database, Loader2 } from "lucide-react";
+import { Activity, Brain, Clock, Shield, Network, Gauge, Box, Database, Loader2 } from "lucide-react";
 
 const layerIcons: Record<ResourceLayer, React.ElementType> = {
   waf: Shield,
@@ -12,10 +14,15 @@ const layerIcons: Record<ResourceLayer, React.ElementType> = {
   loadbalancer: Gauge,
   application: Box,
   data: Database,
+  "ai-ml": Brain,
+  observability: Activity,
 };
 
 const TopologyPage = () => {
-  const { data: providers = [], isLoading, error } = useTopologyProviders();
+  const { projectSlug } = useWorkspace();
+  const { data: loaded = [], isLoading, error } = useTopologyProviders(projectSlug);
+  const providers = useMemo(() => scopeTopologyProviders(loaded), [loaded]);
+  const waiting = !projectSlug || isLoading;
 
   const [visibleLayers, setVisibleLayers] = useState<Set<ResourceLayer>>(
     () => new Set(layerOrder)
@@ -43,7 +50,7 @@ const TopologyPage = () => {
   }, []);
 
   const totalResources = providers.reduce((s, p) => s + p.totalResources, 0);
-  const totalVpcs = providers.reduce((s, p) => s + p.vpcs.length, 0);
+  const totalEnvironments = providers.reduce((s, p) => s + p.environments.length, 0);
   const totalCritical = providers.reduce((s, p) => s + p.healthCounts.critical, 0);
 
   return (
@@ -56,7 +63,7 @@ const TopologyPage = () => {
               <span>Live topology</span>
             </div>
             <div className="text-[11px] text-muted-foreground space-y-0.5">
-              {isLoading ? (
+              {waiting ? (
                 <div className="flex items-center gap-1.5">
                   <Loader2 className="w-3 h-3 animate-spin" />
                   Loading…
@@ -67,7 +74,7 @@ const TopologyPage = () => {
                     <span className="text-foreground font-semibold">{totalResources}</span> resources
                   </div>
                   <div>
-                    <span className="text-foreground font-semibold">{totalVpcs}</span> units
+                    <span className="text-foreground font-semibold">{totalEnvironments}</span> environments
                   </div>
                   {totalCritical > 0 && (
                     <div className="text-destructive">
@@ -89,7 +96,7 @@ const TopologyPage = () => {
               Providers
             </h3>
             <div className="space-y-1.5">
-              {!isLoading && providers.length === 0 && (
+              {!waiting && providers.length === 0 && (
                 <p className="text-[11px] text-muted-foreground">No providers yet.</p>
               )}
               {providers.map((p) => (
@@ -102,7 +109,7 @@ const TopologyPage = () => {
                   <span className="text-xs text-foreground group-hover:text-primary transition-colors">
                     {p.name}
                   </span>
-                  <span className="text-[10px] text-muted-foreground ml-auto">{p.vpcs.length}</span>
+                  <span className="text-[10px] text-muted-foreground ml-auto">{p.environments.length}</span>
                 </label>
               ))}
             </div>
@@ -151,12 +158,12 @@ const TopologyPage = () => {
           </div>
 
           <div className="text-[10px] text-muted-foreground leading-relaxed border-t border-border pt-3">
-            Click a VPC bubble to expand · Hover a resource to see connections
+            One circle is one environment. Click it to place every component type on a ring.
           </div>
         </div>
 
         <div className="flex-1 min-w-0">
-          {!isLoading && providers.length === 0 ? (
+          {!waiting && providers.length === 0 ? (
             <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
               No topology data. Sync infrastructures from config root, then refresh.
             </div>

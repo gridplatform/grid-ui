@@ -44,7 +44,7 @@ const ProviderNode = ({ data }: NodeProps) => {
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
           <div className="flex items-center gap-1">
             <Cloud className="w-3 h-3" />
-            <span><span className="text-foreground font-medium">{d.vpcCount}</span> VPCs</span>
+            <span><span className="text-foreground font-medium">{d.environmentCount}</span> environments</span>
           </div>
           <div className="flex items-center gap-1">
             <Server className="w-3 h-3" />
@@ -69,7 +69,7 @@ const ProviderNode = ({ data }: NodeProps) => {
           </div>
         )}
 
-        <div className="mt-2 text-[9px] text-muted-foreground text-center">Click to explore VPCs →</div>
+        <div className="mt-2 text-[9px] text-muted-foreground text-center">Click to explore environments →</div>
       </div>
 
       <Handle type="source" position={Position.Right} className="!w-0 !h-0 !border-0 !bg-transparent" />

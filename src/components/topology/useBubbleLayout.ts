@@ -1,16 +1,16 @@
 import type { Node, Edge } from "@xyflow/react";
 import type { TopologyProvider } from "@/types/api";
 import type { ResourceLayer } from "@/data/topologyTypes";
+import { environmentBubbleSize } from "./EnvironmentBubbleNode";
 
 const COLLAPSED_SIZE = 260;
-const EXPANDED_SIZE = 900;
 const GAP_X = 100;
 const GAP_Y = 100;
 const SECTION_GAP = 140;
 
 export function buildBubbleLayout(
   providers: TopologyProvider[],
-  expandedVpcs: Set<string>,
+  expandedEnvironments: Set<string>,
   visibleLayers: Set<ResourceLayer>,
   onToggle: (id: string) => void,
   onResourceHover: (id: string | null) => void,
@@ -30,7 +30,7 @@ export function buildBubbleLayout(
       data: {
         label: provider.name,
         type: provider.type,
-        vpcCount: provider.vpcs.length,
+        environmentCount: provider.environments.length,
         totalResources: provider.totalResources,
         healthCounts: provider.healthCounts,
       },
@@ -40,16 +40,17 @@ export function buildBubbleLayout(
 
     currentY += 60;
 
-    // Horizontal flow layout - VPCs placed left to right, wrapping when needed
+    // Circles for this provider, left to right. One circle is one environment.
     let currentX = 60;
     let rowY = currentY;
     let rowMaxH = 0;
     const maxRowWidth = 4000; // Wide horizontal layout
 
-    provider.vpcs.forEach((vpc) => {
-      const isExpanded = expandedVpcs.has(vpc.id);
-      const nodeW = isExpanded ? EXPANDED_SIZE : COLLAPSED_SIZE;
-      const nodeH = isExpanded ? EXPANDED_SIZE : COLLAPSED_SIZE;
+    provider.environments.forEach((environment) => {
+      const isExpanded = expandedEnvironments.has(environment.id);
+      const expandedSize = environmentBubbleSize(environment.resources, visibleLayers);
+      const nodeW = isExpanded ? expandedSize : COLLAPSED_SIZE;
+      const nodeH = isExpanded ? expandedSize : COLLAPSED_SIZE;
 
       // Wrap to next row if exceeds max width
       if (currentX + nodeW > maxRowWidth && currentX > 60) {
@@ -58,22 +59,22 @@ export function buildBubbleLayout(
         rowMaxH = 0;
       }
 
-      allNodeIds.add(vpc.id);
+      allNodeIds.add(environment.id);
 
       nodes.push({
-        id: vpc.id,
-        type: "vpcBubble",
+        id: environment.id,
+        type: "environmentBubble",
         position: { x: currentX, y: rowY },
         zIndex: isExpanded ? 100 : 0,
         data: {
-          vpc,
+          environment,
           expanded: isExpanded,
           visibleLayers,
           onToggle,
           onResourceHover,
           hoveredResource: null as string | null,
           connectedResourceIds: new Set<string>(),
-          connectedVpcIds: new Set<string>(),
+          connectedEnvironmentIds: new Set<string>(),
         },
       });
 
@@ -84,19 +85,19 @@ export function buildBubbleLayout(
     currentY = rowY + rowMaxH + SECTION_GAP;
   }
 
-  // VPC-to-VPC edges - bright and visible in dark mode
+  // A peering line between two environment circles.
   const seen = new Set<string>();
   providers.forEach((p) => {
-    p.vpcs.forEach((v) => {
-      v.vpcConnections.forEach((conn) => {
-        if (!allNodeIds.has(v.id) || !allNodeIds.has(conn.targetVpcId)) return;
-        const key = [v.id, conn.targetVpcId].sort().join("|");
+    p.environments.forEach((environment) => {
+      environment.connections.forEach((conn) => {
+        if (!allNodeIds.has(environment.id) || !allNodeIds.has(conn.targetId)) return;
+        const key = [environment.id, conn.targetId].sort().join("|");
         if (seen.has(key)) return;
         seen.add(key);
         edges.push({
-          id: `vpc-edge-${key}`,
-          source: v.id,
-          target: conn.targetVpcId,
+          id: `env-edge-${key}`,
+          source: environment.id,
+          target: conn.targetId,
           type: "straight",
           style: {
             stroke: "hsl(200 70% 55%)",

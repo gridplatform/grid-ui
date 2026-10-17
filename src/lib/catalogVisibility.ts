@@ -1,6 +1,6 @@
 /**
- * Console catalog visibility (UI only).
- * Keys are provider × subtype, matching desired-state JSON and deployFlags.
+ * Whether a provider and subtype are offered.
+ * Reads consoleProviderRelease and deployFlags in featureFlags.ts. No second switch.
  */
 
 import {
@@ -49,10 +49,9 @@ export function isConsoleOfferingEnabled(
 }
 
 /**
- * List-row visibility for Infrastructure and Monitoring.
- * - visible: released provider and enabled subtype
- * - invalid: released provider but unknown subtype (detail can show vocabulary errors)
- * - hidden: unreleased provider or disabled subtype
+ * visible: provider and subtype are both offered.
+ * invalid: provider is offered, subtype is not a catalog key (the row can show the vocabulary error).
+ * hidden: provider is off, or the subtype key is false.
  */
 export function infrastructureListVisibility(
   provider: string | undefined,
@@ -71,7 +70,7 @@ export function infrastructureListVisibility(
   return "visible";
 }
 
-/** Whether a unit is included in Infrastructure, sync, and env unit counts. */
+/** Included unless the provider is off or the subtype key is false. */
 export function isInfrastructureListed(
   provider: string | undefined,
   subtype: string

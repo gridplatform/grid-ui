@@ -51,7 +51,7 @@ const MonitoringPage = () => {
       const provider = meta?.provider || r.provider;
       const subtype = meta?.type || "";
       if (!subtype) {
-        // No subtype in workspace cache — still honor provider release gate.
+        // Provider switch still applies when the unit type is not on the row.
         return isConsoleProviderReleased(provider);
       }
       return infrastructureListVisibility(provider, subtype) !== "hidden";
