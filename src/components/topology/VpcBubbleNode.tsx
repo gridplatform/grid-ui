@@ -156,7 +156,14 @@ const VpcBubbleNode = ({ data }: NodeProps) => {
           <span className="text-sm font-semibold text-foreground text-center px-4 leading-tight mt-1">
             {vpc.name}
           </span>
-          <span className="text-[10px] text-muted-foreground">{vpc.region}</span>
+          {vpc.resourceType && (
+            <span className="text-[10px] font-medium text-primary uppercase tracking-wide">
+              {vpc.resourceType}
+            </span>
+          )}
+          <span className="text-[10px] text-muted-foreground">
+            {[vpc.region, vpc.cidr].filter(Boolean).join(" · ") || "—"}
+          </span>
           <span className="text-[11px] text-muted-foreground font-medium">{vpc.totalResources} resources</span>
           <div className="flex items-center gap-1.5 mt-1">
             {vpc.healthCounts.healthy > 0 && <div className="w-2.5 h-2.5 rounded-full bg-[hsl(var(--success))]" title={`${vpc.healthCounts.healthy} healthy`} />}
@@ -198,7 +205,9 @@ const VpcBubbleNode = ({ data }: NodeProps) => {
             {vpc.providerId}
           </span>
           <span className="text-sm font-semibold text-foreground">{vpc.name}</span>
-          <span className="text-[10px] text-muted-foreground">{vpc.region} · {vpc.cidr}</span>
+          <span className="text-[10px] text-muted-foreground">
+            {[vpc.resourceType, vpc.region, vpc.cidr].filter(Boolean).join(" · ")}
+          </span>
         </div>
 
         {/* Concentric ring guides */}

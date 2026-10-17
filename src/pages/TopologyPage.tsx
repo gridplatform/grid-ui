@@ -67,7 +67,7 @@ const TopologyPage = () => {
                     <span className="text-foreground font-semibold">{totalResources}</span> resources
                   </div>
                   <div>
-                    <span className="text-foreground font-semibold">{totalVpcs}</span> VPCs
+                    <span className="text-foreground font-semibold">{totalVpcs}</span> units
                   </div>
                   {totalCritical > 0 && (
                     <div className="text-destructive">

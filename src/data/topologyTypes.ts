@@ -73,6 +73,8 @@ export interface VpcConnection {
 export interface Vpc {
   id: string;
   name: string;
+  /** Catalog type of the unit (`resourceType` on the API). */
+  resourceType?: string;
   region: string;
   cidr: string;
   providerId: string;
