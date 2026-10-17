@@ -4,7 +4,7 @@ The browser console for [Grid Platform](https://github.com/gridplatform) — whe
 
 It talks to **[grid-core](https://github.com/gridplatform/grid-core)** over the HTTP API. The UI shows state and starts actions; core (and the CLI) do the real work.
 
-**Docs:** [grid-docs](https://github.com/gridplatform/grid-docs) · **Website:** [gridplatform.org](https://gridplatform.org)
+**Docs:** [grid-docs](https://gridplatform.github.io/doc/) · **Website:** [gridplatform.org](https://gridplatform.org)
 
 ## What you can do here
 
@@ -24,7 +24,7 @@ Some pages (APM, logging, extra clouds) can be hidden with **feature flags** in 
 - Node.js 20+ (see `.nvmrc` if present)
 - A running **grid-core** API (`VITE_GRID_API_URL` / build-time API base)
 
-For a full product install (UI + API together), use [grid-core/install](https://github.com/gridplatform/grid-core/tree/main/install) and [grid-docs → Install](https://github.com/gridplatform/grid-docs/tree/main/docs/install).
+For a full product install (UI + API together), use [grid-core/install](https://github.com/gridplatform/grid-core/tree/main/install) and [grid-docs → Install](https://gridplatform.github.io/doc/Install/Overview).
 
 ## Development
 
@@ -48,7 +48,7 @@ npm test
 | [grid-cli](https://github.com/gridplatform/grid-cli) | Same jobs from a terminal |
 | [grid-terraform](https://github.com/gridplatform/grid-terraform) | Cloud building blocks used on apply |
 | [grid-config](https://github.com/gridplatform/grid-config) | **Example** desired-state JSON (create your own for real use) |
-| [grid-docs](https://github.com/gridplatform/grid-docs) | Guides |
+| [grid-docs](https://gridplatform.github.io/doc/) | Guides |
 
 ## License
 

@@ -289,7 +289,7 @@ const AppShell = ({ children, activeTab = "overview", isAdmin: isAdminProp }: Ap
           <div className="flex-1" />
 
           <a
-            href="https://github.com/gridplatform/grid-docs"
+            href="https://gridplatform.github.io/doc/"
             target="_blank"
             rel="noopener noreferrer"
             className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border bg-secondary text-muted-foreground text-sm hover:border-muted-foreground/50 hover:text-foreground transition-colors mr-2"
@@ -403,7 +403,7 @@ const AppShell = ({ children, activeTab = "overview", isAdmin: isAdminProp }: Ap
               <div className="max-h-80 overflow-y-auto">
                 {searchQuery.trim().length < 2 ? (
                   <div className="p-4 text-center text-sm text-muted-foreground">
-                    Type at least 2 characters — results from grid-core.
+                    Type at least 2 characters.
                   </div>
                 ) : searchLoading && !searchResults ? (
                   <div className="p-4 text-center text-sm text-muted-foreground">Searching…</div>

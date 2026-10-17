@@ -12,4 +12,4 @@ npm run dev
 
 Point `VITE_GRID_API_URL` at a running [grid-core](https://github.com/gridplatform/grid-core) instance.
 
-Docs: [grid-docs](https://github.com/gridplatform/grid-docs). License: MIT.
+Docs: [grid-docs](https://gridplatform.github.io/doc/). License: MIT.
